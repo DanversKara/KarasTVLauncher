@@ -1,4 +1,4 @@
-# Google TV Launchers
+# Launchers
 
 ## [Kara's TV](karas-tv/) — v2.8.1
 
