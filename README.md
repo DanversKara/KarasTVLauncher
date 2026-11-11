@@ -1,4 +1,4 @@
-# Launchers
+# Kara's TV Launcher
 
 ## [Kara's TV](karas-tv/) — v2.8.1
 
