@@ -1,7 +1,7 @@
 # Kara's TV 2.7 — an ad-free, animated Google TV home with live CCTV, weather, what's-on, and a full button remapper
 
 **Package:** `com.moomoo.tvlauncherbase` (unchanged, so it installs over 1.x and keeps your settings)
-**Version:** 2.8.1 (versionCode 18) · shown on the TV as **Kara's TV** (rename it in Customize home → Name) · **Min SDK:** 26 · **Target SDK:** 34 · **Dependencies:** none (framework APIs only)
+**Version:** 2.8.2 (versionCode 19) · shown on the TV as **Kara's TV** (rename it in Customize home → Name) · **Min SDK:** 26 · **Target SDK:** 34 · **Dependencies:** none (framework APIs only)
 
 Built for Google TV / Android TV boxes such as the **onn. Google TV 4K / 4K Pro**, Chromecast with Google TV, and TVs running Google TV.
 
@@ -19,7 +19,7 @@ Built for Google TV / Android TV boxes such as the **onn. Google TV 4K / 4K Pro*
 </tr>
 </table>
 
-## What's new in 2.9 (upcoming — not in the 2.8.1 release yet)
+## What's new in 2.9 (upcoming — not in the 2.8.2 release yet)
 
 ### IPTV: playlists, TV guide, and a grid guide
 - Import M3U playlists by URL or file upload, from the web editor or by long-pressing 📺 → Add playlist. Multiple playlists are saved; re-importing one refreshes it instead of duplicating it.
@@ -31,6 +31,28 @@ Built for Google TV / Android TV boxes such as the **onn. Google TV 4K / 4K Pro*
 
 ### Web editor (LAN only)
 - Settings → System → Web editor, then open `http://<your-TV's-IP>:8080` in a browser on the same network. Edit quick-menu buttons and icons, the header logo, and IPTV channels and playlists — changes apply live on the TV, no restart, and save automatically. Nothing leaves your network.
+
+## What's new in 2.8.2
+
+### A header you can always read
+- **Colors follow the wallpaper.** The time, date, greeting, weather and every header icon switch to dark text on bright or soft-white wallpapers and white text on dark ones. Each group (buttons on the left, weather and clock on the right) sits on a soft rounded backdrop tinted from the wallpaper's own color, a little stronger on busy mid-tone images. It re-checks every time the wallpaper changes (slideshow, Discover, theme), with a small margin so it never flickers.
+- Weather icons get darker clouds, moon and snow on bright wallpapers.
+- **Settings → Header colors** (also in Customize home): *Match the wallpaper* (default) or *Theme colors*.
+
+### Greeting through the day
+- Good morning (5–11 AM) · Good afternoon (12–4 PM) · Good evening (5–8 PM) · Good night (9–11 PM) · Past midnight (12–4 AM). It changes by itself when the hour turns. Turn it on in Customize home → Greeting above the clock.
+
+### Updates from GitHub
+- **Settings → Updates → Check for updates** looks for the newest version on GitHub: the latest GitHub **Release** (its .apk), or else the highest `karas-tv-X.Y.Z.apk` in `karas-tv/release/`. It shows installed vs. available, saves a backup, downloads the APK and hands it to Android's installer. Settings, cameras and shows are kept.
+- **Check automatically** (on by default): once a day when the home screen opens. It only speaks up when there's something new, and always asks first.
+- **Update source**: change the GitHub repo it checks (owner/name).
+- The first time, Android asks you to allow Kara's TV to install apps. If the TV has no such screen, run once from a computer: `adb shell appops set com.moomoo.tvlauncherbase REQUEST_INSTALL_PACKAGES allow`
+- An update only installs over a build signed with the same key. Every APK in this repo so far uses the same key.
+
+### Backups named by date and time
+- Every backup is its own file in `Download/Kara's TV/`, e.g. `Kara's TV backup 2026-11-15 3.04 PM.json` (Back up now) or `… 3.04 PM (auto).json` (automatic).
+- Automatic backups update the newest automatic file within the same hour (renaming it to the new time) instead of piling up. The newest 10 automatic and 10 manual backups are kept.
+- **Restore from backup** lists them newest first with the date, time and type (★ marks the newest). Older single-file backups are still found.
 
 ## What's new in 2.8.1
 

@@ -12,6 +12,8 @@
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <!-- App menu → Uninstall. -->
     <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
+    <!-- Settings → Check for updates installs new versions from GitHub -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!-- Optional, granted only via adb (pm grant): lets TV Launcher switch its own
          accessibility + notification-access services on and keep them on. -->
     <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" />
@@ -144,6 +146,8 @@
         <!-- Boot guard: re-asserts home ownership at every boot, launches
              the launcher on power (when "Boot on Power" is on), and arms the
              watchdog that notices if another launcher took over. -->
+        <receiver android:name=".UpdateReceiver" android:exported="false" />
+
         <receiver android:name=".BootReceiver" android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />

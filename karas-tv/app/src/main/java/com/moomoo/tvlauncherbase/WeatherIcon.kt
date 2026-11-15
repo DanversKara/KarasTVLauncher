@@ -25,6 +25,10 @@ class WeatherIcon(c: Context) : View(c) {
         set(v) { field = v; invalidate() }
     var windy = false
     var animate = true
+    /** True when drawn on a bright background (header over a light wallpaper). */
+    var onLight: Boolean? = null
+        set(v) { field = v; invalidate() }
+    private val lt get() = onLight ?: LauncherTheme.light
 
     private val p = Paint(Paint.ANTI_ALIAS_FLAG)
     private val path = Path()
@@ -33,11 +37,11 @@ class WeatherIcon(c: Context) : View(c) {
 
     private val sunColor = Color.parseColor("#FFC93C")
     private val sunGlow = Color.parseColor("#55FFC93C")
-    private val moonColor = Color.parseColor("#F4F1DE")
+    private val moonColor get() = if (lt) Color.parseColor("#8C8A70") else Color.parseColor("#F4F1DE")
     private val rainColor = Color.parseColor("#6FB7FF")
     private val boltColor = Color.parseColor("#FFE066")
-    private val cloudColor get() = if (LauncherTheme.light) Color.parseColor("#9AA6B8") else Color.parseColor("#E8EEF7")
-    private val darkCloud get() = if (LauncherTheme.light) Color.parseColor("#6B7686") else Color.parseColor("#9AA3B2")
+    private val cloudColor get() = if (lt) Color.parseColor("#9AA6B8") else Color.parseColor("#E8EEF7")
+    private val darkCloud get() = if (lt) Color.parseColor("#6B7686") else Color.parseColor("#9AA3B2")
 
     override fun onDraw(canvas: Canvas) {
         val s = minOf(width, height).toFloat()
@@ -54,7 +58,7 @@ class WeatherIcon(c: Context) : View(c) {
             Kind.FOG -> fog(canvas, s, t)
             Kind.DRIZZLE -> { drops(canvas, s, t, 3, 0.6f, rainColor, snow = false); cloud(canvas, s, t, -s * 0.06f, cloudColor) }
             Kind.RAIN -> { drops(canvas, s, t, 5, 1f, rainColor, snow = false); cloud(canvas, s, t, -s * 0.06f, darkCloud) }
-            Kind.SNOW -> { drops(canvas, s, t, 5, 0.45f, Color.WHITE, snow = true); cloud(canvas, s, t, -s * 0.06f, cloudColor) }
+            Kind.SNOW -> { drops(canvas, s, t, 5, 0.45f, if (lt) Color.parseColor("#8FA3BF") else Color.WHITE, snow = true); cloud(canvas, s, t, -s * 0.06f, cloudColor) }
             Kind.STORM -> { drops(canvas, s, t, 4, 1.1f, rainColor, snow = false); bolt(canvas, s, t); cloud(canvas, s, t, -s * 0.06f, darkCloud) }
         }
         if (windy) wind(canvas, s, t)
@@ -100,7 +104,7 @@ class WeatherIcon(c: Context) : View(c) {
         val stars = listOf(0.78f to 0.22f, 0.86f to 0.48f, 0.68f to 0.12f)
         stars.forEachIndexed { i, (x, y) ->
             val a = (0.5f + 0.5f * sin(t * 2.2f + i * 2f)).coerceIn(0f, 1f)
-            p.color = Color.argb((80 + 175 * a).toInt(), 255, 255, 255)
+            p.color = if (lt) Color.argb((80 + 175 * a).toInt(), 120, 120, 100) else Color.argb((80 + 175 * a).toInt(), 255, 255, 255)
             c.drawCircle(s * x, s * y, s * (0.018f + 0.012f * a), p)
         }
     }
@@ -174,7 +178,7 @@ class WeatherIcon(c: Context) : View(c) {
         p.style = Paint.Style.STROKE
         p.strokeCap = Paint.Cap.ROUND
         p.strokeWidth = s * 0.03f
-        p.color = if (LauncherTheme.light) Color.parseColor("#7A8597") else Color.parseColor("#CFE3FF")
+        p.color = if (lt) Color.parseColor("#7A8597") else Color.parseColor("#CFE3FF")
         for (i in 0 until 2) {
             val phase = ((t * 0.9f + i * 0.5f) % 1f)
             val x = -s * 0.3f + phase * s * 1.4f

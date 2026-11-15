@@ -52,6 +52,10 @@ class SettingsActivity : RowListActivity() {
             val o = listOf(85 to "Small (85%)", 100 to "Normal (100%)", 115 to "Large (115%)", 130 to "Extra large (130%)")
             Ui.choose(c, "Header size", o.map { it.second }) { BasePrefs.setHeaderSize(c, o[it].first); refresh() }
         }
+        out += Row("Header colors", if (BasePrefs.headerTone(c) == "auto")
+            "Match the wallpaper — dark or light text and a soft backdrop, so it's always readable" else "Theme colors") {
+            BasePrefs.setHeaderTone(c, if (BasePrefs.headerTone(c) == "auto") "theme" else "auto"); refresh()
+        }
         out += Row("Search button", if (BasePrefs.showSearch(c)) "Shown in the top bar" else "Hidden") {
             BasePrefs.setShowSearch(c, !BasePrefs.showSearch(c)); refresh()
         }
@@ -124,21 +128,36 @@ class SettingsActivity : RowListActivity() {
         }
         out += Row("Backup", header = true)
         val last = BasePrefs.lastBackupAt(c)
+        val lastFmt = java.text.SimpleDateFormat("EEE, MMM d · h:mm a", java.util.Locale.getDefault())
         out += Row("Automatic backup", (if (BasePrefs.autoBackup(c)) "On" else "Off") + " · saved to ${Backup.location}" +
-            if (last > 0) " · last ${ShowInfo.whenText(last)}" else "") {
+            if (last > 0) " · last ${lastFmt.format(java.util.Date(last))}" else "") {
             BasePrefs.setAutoBackup(c, !BasePrefs.autoBackup(c)); refresh()
         }
-        out += Row("Back up now", "Survives “Clear storage” and uninstalling (shared Downloads folder)") {
+        out += Row("Back up now", "A new file named with today's date and time · survives “Clear storage” and uninstalling") {
             if (Backup.needsPermission(c)) { Backup.requestPermission(c); return@Row }
             Thread {
                 val ok = Backup.writeNow(c)
-                runOnUiThread { Ui.toast(c, if (ok) "Backed up to ${Backup.location}" else "Backup failed — check storage"); refresh() }
+                runOnUiThread {
+                    Ui.toast(c, if (ok) "Saved “${Backup.fileName(BasePrefs.lastBackupAt(c), false)}” in ${Backup.location}" else "Backup failed — check storage")
+                    refresh()
+                }
             }.start()
         }
-        out += Row("Restore from backup", "Settings, cameras, buttons, theme, favorites and shows") {
+        out += Row("Restore from backup", "Pick from your backups, newest first, by date and time") {
             Backup.restoreFlow(c) { recreate() }
         }
+        out += Row("Updates", header = true)
         val ver = try { packageManager.getPackageInfo(packageName, 0).versionName } catch (e: Exception) { "?" }
+        out += Row("Check for updates", "Installed: $ver · gets the newest version from GitHub") { Updater.check(c) }
+        out += Row("Check automatically", if (BasePrefs.autoUpdate(c)) "On — once a day, asks before installing" else "Off") {
+            BasePrefs.setAutoUpdate(c, !BasePrefs.autoUpdate(c)); refresh()
+        }
+        out += Row("Update source", "github.com/${BasePrefs.updateRepo(c)}") {
+            Ui.prompt(c, "GitHub repo (owner/name)", BasePrefs.updateRepo(c)) { v ->
+                val t = v.trim().removePrefix("https://").removePrefix("github.com/").trim('/')
+                if (t.count { it == '/' } == 1) { BasePrefs.setUpdateRepo(c, t); refresh() } else Ui.toast(c, "Use the form owner/name")
+            }
+        }
         out += Row("About", "${Brand.name} $ver · ad-free · no tracking") {
             Ui.dialog(c).setTitle("${Brand.name} $ver")
                 .setMessage(

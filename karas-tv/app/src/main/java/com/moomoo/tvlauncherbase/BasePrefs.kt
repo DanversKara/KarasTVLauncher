@@ -199,6 +199,13 @@ object BasePrefs {
 
     /** Header size: 85, 100, 115, 130 (%). The header also shrinks automatically to always fit. */
     fun headerSize(c: Context): Int = p(c).getInt("header_size", 100)
+    /** "auto" = header text/icons and a soft backdrop adapt to the wallpaper behind them; "theme" = theme colors. */
+    fun headerTone(c: Context): String = p(c).getString("header_tone", "auto") ?: "auto"
+    fun setHeaderTone(c: Context, v: String) = edit(c) { putString("header_tone", v) }
+    fun autoUpdate(c: Context): Boolean = p(c).getBoolean("auto_update", true)
+    fun setAutoUpdate(c: Context, v: Boolean) = edit(c) { putBoolean("auto_update", v) }
+    fun updateRepo(c: Context): String = p(c).getString("update_repo", Updater.DEFAULT_REPO) ?: Updater.DEFAULT_REPO
+    fun setUpdateRepo(c: Context, v: String) = edit(c) { putString("update_repo", v) }
     fun setHeaderSize(c: Context, v: Int) = edit(c) { putInt("header_size", v) }
     /** Text size for the whole app: 90, 100, 115, 130 (%). */
     fun textSize(c: Context): Int = p(c).getInt("text_size", 100)
@@ -245,6 +252,8 @@ object BasePrefs {
     fun autoBackup(c: Context): Boolean = p(c).getBoolean("auto_backup", true)
     fun setAutoBackup(c: Context, v: Boolean) = edit(c) { putBoolean("auto_backup", v) }
     fun lastBackupAt(c: Context): Long = p(c).getLong("last_backup_at", 0L)
+    fun lastUpdateCheck(c: Context): Long = c.getSharedPreferences("update_meta", 0).getLong("at", 0L)
+    fun markUpdateCheck(c: Context, t: Long) { c.getSharedPreferences("update_meta", 0).edit().putLong("at", t).apply() }
     internal fun markBackup(c: Context, t: Long) { p(c).edit().putLong("last_backup_at", t).apply() }
 
     // ---------------------------------------------------------------- home customization

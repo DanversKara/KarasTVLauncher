@@ -97,6 +97,10 @@ class CustomizeActivity : RowListActivity() {
             val o = listOf(85 to "Small (85%)", 100 to "Normal (100%)", 115 to "Large (115%)", 130 to "Extra large (130%)")
             Ui.choose(c, "Header size", o.map { it.second }) { BasePrefs.setHeaderSize(c, o[it].first); refresh() }
         }
+        out += Row("Header colors", if (BasePrefs.headerTone(c) == "auto")
+            "Match the wallpaper — dark or light text and a soft backdrop, so it's always readable" else "Theme colors") {
+            BasePrefs.setHeaderTone(c, if (BasePrefs.headerTone(c) == "auto") "theme" else "auto"); refresh()
+        }
         out += Row("Density", if (BasePrefs.compactDensity(c)) "Compact — everything ~15% smaller" else "Comfortable") {
             BasePrefs.setCompactDensity(c, !BasePrefs.compactDensity(c)); refresh()
         }

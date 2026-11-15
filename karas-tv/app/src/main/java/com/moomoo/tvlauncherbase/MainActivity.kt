@@ -123,6 +123,10 @@ class MainActivity : Activity() {
         override fun run() {
             if (resumed && WatchStore.version != builtWatch && !resizeMode && movingPkg == null) rebuild()
             updateSleepPill()
+            // the greeting follows the time of day (checked every few seconds, redrawn only when it changes)
+            if (resumed && shownGreeting != null && shownGreeting != greeting()) {
+                if (BasePrefs.clockStyle(this@MainActivity) == "big") rebuild() else replaceHeader()
+            }
             if (resumed) Weather.refresh(this@MainActivity) { if (resumed) bindWeather() }
             h.postDelayed(this, 3000)
         }
@@ -191,6 +195,7 @@ class MainActivity : Activity() {
         resumed = true
         ServiceSetup.selfEnable(this)
         ShowInfo.refreshStale(this)
+        Updater.autoCheck(this)
         Weather.refresh(this) { if (resumed) bindWeather() }
         if (BasePrefs.wallpaperMode(this) == "discover") Discover.refresh(this) { if (resumed) { wallpaperSrc = "<new>"; applyWallpaper(heroItem) } }
         if (::animBg.isInitialized) { animBg.running = true; animBg.invalidate() }
@@ -289,6 +294,7 @@ class MainActivity : Activity() {
             ?: watching.firstOrNull() ?: upcoming.firstOrNull()
         showHero(heroItem)
 
+        if (builtRevision != BasePrefs.revision) scheduleTone(400)   // theme / dim / header-tone setting changed
         builtRevision = BasePrefs.revision
         builtWatch = WatchStore.version
         dirty = false
@@ -337,6 +343,7 @@ class MainActivity : Activity() {
                 Img.load(wallpaper, src, resources.displayMetrics.widthPixels) { ok ->
                     if (ok) { wallpaper.alpha = 0f; wallpaper.animate().alpha(1f).setDuration(600).start() }
                     else fallbackWallpaper(mode)
+                    scheduleTone()
                 }
             }
             else -> fallbackWallpaper(mode)
@@ -355,6 +362,7 @@ class MainActivity : Activity() {
                     blend(Color.BLACK, LauncherTheme.background, 0.5f)))
         })
         wallpaper.alpha = 1f
+        scheduleTone()
     }
 
     // Animated gradient wallpaper: slowly drifts between the theme's gradient colors.
@@ -430,6 +438,99 @@ class MainActivity : Activity() {
     private var headerView: View? = null
     private var headerParent: LinearLayout? = null
 
+    // ------------------------------------------------------------ header tone
+    /**
+     * Colors for the header that read on whatever wallpaper is behind it:
+     * dark text on bright wallpapers, white on dark ones, plus a soft frosted
+     * backdrop tinted from the wallpaper's own color.
+     */
+    private class Tone(val light: Boolean, val text: Int, val soft: Int, val accent: Int, val chip: Int)
+    private var tone: Tone? = null
+    private val hText get() = tone?.text ?: LauncherTheme.text
+    private val hSoft get() = tone?.soft ?: LauncherTheme.softText
+    private val hAccent get() = tone?.accent ?: LauncherTheme.accent
+    private val hLight get() = tone?.light ?: LauncherTheme.light
+    private val toneRunnable = Runnable { sampleTone() }
+
+    private fun scheduleTone(delay: Long = 150) {
+        h.removeCallbacks(toneRunnable)
+        h.postDelayed(toneRunnable, delay)
+    }
+
+    private fun lum(c: Int): Float {
+        fun ch(v: Int): Float { val x = v / 255f; return if (x <= 0.03928f) x / 12.92f else Math.pow(((x + 0.055f) / 1.055f).toDouble(), 2.4).toFloat() }
+        return 0.2126f * ch(Color.red(c)) + 0.7152f * ch(Color.green(c)) + 0.0722f * ch(Color.blue(c))
+    }
+
+    /** Renders the background layers behind the header into a tiny bitmap and picks colors from it. */
+    private fun sampleTone() {
+        if (BasePrefs.headerTone(this) != "auto") {
+            if (tone != null) { tone = null; replaceHeader() }
+            return
+        }
+        val w = root.width
+        val bar = headerView ?: return
+        if (w <= 0 || bar.height <= 0) { scheduleTone(300); return }
+        // Header area in screen coordinates (plus a little margin around it).
+        val loc = IntArray(2); bar.getLocationInWindow(loc)
+        val rootLoc = IntArray(2); root.getLocationInWindow(rootLoc)
+        val top = (loc[1] - rootLoc[1]).coerceAtLeast(0)
+        val bottom = top + bar.height + dp(6)
+        val sw = 80
+        val scale = sw.toFloat() / w
+        val sh = ((bottom) * scale).toInt().coerceAtLeast(4)
+        val bmp = try { android.graphics.Bitmap.createBitmap(sw, sh, android.graphics.Bitmap.Config.ARGB_8888) } catch (e: Throwable) { return }
+        try {
+            val cv = android.graphics.Canvas(bmp)
+            cv.drawColor(LauncherTheme.background)
+            cv.scale(scale, scale)
+            for (i in 0 until minOf(3, root.childCount)) {   // wallpaper, animated effect, scrim
+                val v = root.getChildAt(i)
+                if (v.visibility == View.VISIBLE && v.width > 0) {
+                    val n = cv.save(); cv.translate(v.left.toFloat(), v.top.toFloat()); v.draw(cv); cv.restoreToCount(n)
+                }
+            }
+        } catch (e: Throwable) { bmp.recycle(); return }
+        val y0 = (top * scale).toInt().coerceIn(0, sh - 1)
+        val lums = ArrayList<Float>(sw * (sh - y0))
+        var r = 0L; var g = 0L; var b = 0L; var n = 0
+        for (y in y0 until sh) for (x in 0 until sw) {
+            val c = bmp.getPixel(x, y)
+            lums += lum(c); r += Color.red(c); g += Color.green(c); b += Color.blue(c); n++
+        }
+        bmp.recycle()
+        if (n == 0) return
+        lums.sort()
+        val bright = lums[(lums.size * 0.8f).toInt().coerceAtMost(lums.size - 1)]   // bright patches matter most
+        val avg = Color.rgb((r / n).toInt(), (g / n).toInt(), (b / n).toInt())
+        val wasLight = tone?.light ?: false
+        val light = if (wasLight) bright > 0.36f else bright > 0.45f   // hysteresis: no flicker on mid tones
+        val busy = (1f - Math.abs(bright - 0.4f) / 0.4f).coerceIn(0f, 1f)   // mid tones need more backdrop
+        val acc = LauncherTheme.accent
+        val t = if (light) Tone(true,
+            text = 0xFF1B1C1E.toInt(), soft = 0xFF3C4043.toInt(),
+            accent = if (lum(acc) > 0.25f) blend(Color.BLACK, acc, 0.45f) else acc,
+            chip = (((0x70 + 0x40 * busy).toInt()) shl 24) or (blend(Color.WHITE, avg, 0.65f) and 0xFFFFFF))
+        else Tone(false,
+            text = Color.WHITE, soft = 0xFFE6E8EB.toInt(),
+            accent = if (lum(acc) < 0.18f) blend(Color.WHITE, acc, 0.45f) else acc,
+            chip = (((0x40 + 0x50 * busy).toInt()) shl 24) or (blend(Color.BLACK, avg, 0.6f) and 0xFFFFFF))
+        val old = tone
+        val changed = old == null || old.light != t.light || old.accent != t.accent ||
+            Math.abs(Color.alpha(old.chip) - Color.alpha(t.chip)) > 12 ||
+            Math.abs(lum(old.chip or 0xFF000000.toInt()) - lum(t.chip or 0xFF000000.toInt())) > 0.04f
+        if (changed) { tone = t; replaceHeader() }
+    }
+
+    /** A soft rounded backdrop behind a group of header items (only with the adaptive tone). */
+    private fun headerGroup(): LinearLayout = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        clipChildren = false; clipToPadding = false
+        tone?.let { t -> background = GradientDrawable().apply { setColor(t.chip); cornerRadius = hdp(40f).toFloat() } }
+        setPadding(hdp(6f), hdp(3f), hdp(6f), hdp(3f))
+    }
+
     /** Final header scale: Header size setting × automatic fit. */
     private val hs get() = BasePrefs.headerSize(this) / 100f * headerFit
 
@@ -443,7 +544,7 @@ class MainActivity : Activity() {
             contentDescription = desc
             isFocusable = true; isClickable = true
             background = Ui.focusBg(this@MainActivity, Color.TRANSPARENT, 999)
-            addView(HeaderIcon(this@MainActivity, kind), FrameLayout.LayoutParams(hdp(24f), hdp(24f), Gravity.CENTER))
+            addView(HeaderIcon(this@MainActivity, kind).apply { tint = hText }, FrameLayout.LayoutParams(hdp(24f), hdp(24f), Gravity.CENTER))
             layoutParams = LinearLayout.LayoutParams(size, size).apply { marginEnd = hdp(6f) }
             setOnClickListener { onClick() }
         }
@@ -451,14 +552,14 @@ class MainActivity : Activity() {
 
     /** Text tab (Apps). Selected = accent underline, like Google TV's tabs. */
     private fun textTab(label: String, selected: Boolean, tag: String, onClick: () -> Unit): TextView =
-        Ui.text(this, label, 17f * hs, if (selected) LauncherTheme.text else LauncherTheme.softText, selected).apply {
+        Ui.text(this, label, 17f * hs, if (selected) hText else hSoft, selected).apply {
             this.tag = tag
             gravity = Gravity.CENTER
             isFocusable = true; isClickable = true
             setPadding(hdp(16f), hdp(9f), hdp(16f), hdp(9f))
             background = if (selected) android.graphics.drawable.LayerDrawable(arrayOf(
                 Ui.focusBg(this@MainActivity, Color.TRANSPARENT, 999),
-                GradientDrawable().apply { setColor(LauncherTheme.accent); cornerRadius = Ui.dpf(this@MainActivity, 2f) }
+                GradientDrawable().apply { setColor(hAccent); cornerRadius = Ui.dpf(this@MainActivity, 2f) }
             )).apply {
                 setLayerGravity(1, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL)
                 setLayerSize(1, hdp(18f), hdp(3f)); setLayerInsetBottom(1, hdp(3f))
@@ -469,7 +570,7 @@ class MainActivity : Activity() {
 
     /** Thin vertical divider between header groups. */
     private fun divider(): View = View(this).apply {
-        setBackgroundColor((LauncherTheme.text and 0xFFFFFF) or 0x33000000)
+        setBackgroundColor((hText and 0xFFFFFF) or 0x40000000)
         layoutParams = LinearLayout.LayoutParams(Ui.dp(this@MainActivity, 1), hdp(30f)).apply {
             marginStart = hdp(10f); marginEnd = hdp(14f)
         }
@@ -488,42 +589,47 @@ class MainActivity : Activity() {
             setPadding(hdp(4f), hdp(4f), 0, hdp(10f))
             clipChildren = false; clipToPadding = false
         }
+        val left = headerGroup()
         if (BasePrefs.nameSpot(this) == "left") nameBadge(24f * hs)?.let {
-            bar.addView(it, LinearLayout.LayoutParams(-2, -2).apply { marginEnd = hdp(20f) })
+            left.addView(it, LinearLayout.LayoutParams(-2, -2).apply { marginStart = hdp(8f); marginEnd = hdp(14f) })
         }
         val search = iconButton(HeaderIcon.Kind.SEARCH, "top:search", "Search") { openSearch() }
-        if (BasePrefs.showSearch(this)) bar.addView(search)
+        if (BasePrefs.showSearch(this)) left.addView(search)
         val apps = textTab(if (tab == "apps") "✕  Apps" else "Apps", tab == "apps", "top:apps") {
             tab = if (tab == "apps") "home" else "apps"; rebuild()
         }
-        bar.addView(apps)
+        left.addView(apps)
         if (BasePrefs.cameras(this).isNotEmpty()) {
             if (BasePrefs.showCamButton(this))
-                bar.addView(iconButton(HeaderIcon.Kind.CAMERA, "top:cams", "Cameras") {
+                left.addView(iconButton(HeaderIcon.Kind.CAMERA, "top:cams", "Cameras") {
                     startActivity(Intent(this, CameraWallActivity::class.java))
                 })
             if (BasePrefs.showFloatButton(this))
-                bar.addView(iconButton(HeaderIcon.Kind.PIP, "top:float", "Floating cameras") { OverlayManager.toggle(this) })
+                left.addView(iconButton(HeaderIcon.Kind.PIP, "top:float", "Floating cameras") { OverlayManager.toggle(this) })
         }
+        (left.getChildAt(left.childCount - 1).layoutParams as? LinearLayout.LayoutParams)?.marginEnd = 0
+        bar.addView(left)
         bar.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f))
         if (BasePrefs.nameSpot(this) == "center") {
             nameBadge(22f * hs)?.let { bar.addView(it) }
             bar.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f))
         }
+        val right = headerGroup()
         val wx = weatherView()
-        if (wx != null) bar.addView(wx)
+        if (wx != null) right.addView(wx)
         val clock = if (BasePrefs.clockStyle(this) != "big") clockView() else null
-        if (wx != null && clock != null) bar.addView(divider())
-        clock?.let { bar.addView(it) }
-        bar.addView(View(this), LinearLayout.LayoutParams(hdp(14f), 1))
-        bar.addView(iconButton(HeaderIcon.Kind.EDIT, "top:customize", "Customize home") {
+        if (wx != null && clock != null) right.addView(divider())
+        clock?.let { right.addView(it) }
+        right.addView(View(this), LinearLayout.LayoutParams(hdp(14f), 1))
+        right.addView(iconButton(HeaderIcon.Kind.EDIT, "top:customize", "Customize home") {
             startActivity(Intent(this, CustomizeActivity::class.java))
         })
         val settings = iconButton(HeaderIcon.Kind.SETTINGS, "top:settings", "Settings") {
             startActivity(Intent(this, SettingsActivity::class.java))
         }
         (settings.layoutParams as LinearLayout.LayoutParams).marginEnd = 0
-        bar.addView(settings)
+        right.addView(settings)
+        bar.addView(right)
 
         // ◀ on the first button and ▶ on Settings stay put.
         val first = if (BasePrefs.showSearch(this)) search else apps
@@ -533,6 +639,7 @@ class MainActivity : Activity() {
 
         headerView = bar
         bar.post { fitHeader(bar) }
+        if (tone == null && BasePrefs.headerTone(this) == "auto") scheduleTone(250)
         return bar
     }
 
@@ -604,17 +711,17 @@ class MainActivity : Activity() {
             setPadding(hdp(8f), hdp(4f), hdp(14f), hdp(4f))
             setOnClickListener { CustomizeActivity.weatherDetails(this@MainActivity) { rebuild() } }
         }
-        val icon = WeatherIcon(this).apply { animate = BasePrefs.weatherAnimated(this@MainActivity) }
+        val icon = WeatherIcon(this).apply { animate = BasePrefs.weatherAnimated(this@MainActivity); onLight = tone?.light }
         box.addView(icon, LinearLayout.LayoutParams(hdp(38f), hdp(38f)))
         val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(hdp(8f), 0, 0, 0) }
-        val temp = Ui.text(this, "", 24f * hs, LauncherTheme.text).apply {
+        val temp = Ui.text(this, "", 24f * hs, hText).apply {
             typeface = if (LauncherTheme.font == "mono") Typeface.MONOSPACE else Typeface.create("sans-serif", Typeface.NORMAL)
-            if (!LauncherTheme.light) setShadowLayer(6f, 0f, 1f, 0x99000000.toInt())
+            if (!hLight) setShadowLayer(6f, 0f, 1f, 0x99000000.toInt())
             maxLines = 1
         }
-        val line = Ui.text(this, "", 12.5f * hs, LauncherTheme.softText).apply {
+        val line = Ui.text(this, "", 12.5f * hs, hSoft).apply {
             maxLines = 1
-            if (!LauncherTheme.light) setShadowLayer(4f, 0f, 1f, 0x99000000.toInt())
+            if (!hLight) setShadowLayer(4f, 0f, 1f, 0x99000000.toInt())
         }
         col.addView(temp); col.addView(line)
         box.addView(col)
@@ -660,7 +767,7 @@ class MainActivity : Activity() {
             textSize = sp * LauncherTheme.textScale; setTextColor(color)
             typeface = if (LauncherTheme.font == "mono") Typeface.MONOSPACE
                 else Typeface.create(if (light) "sans-serif-light" else "sans-serif", Typeface.NORMAL)
-            if (!LauncherTheme.light) setShadowLayer(6f, 0f, 1f, 0x99000000.toInt())
+            if (!hLight) setShadowLayer(6f, 0f, 1f, 0x99000000.toInt())
             maxLines = 1
         }
         val col = LinearLayout(this).apply {
@@ -668,21 +775,22 @@ class MainActivity : Activity() {
             gravity = if (big) Gravity.CENTER_HORIZONTAL else Gravity.START or Gravity.CENTER_VERTICAL
         }
         val greet = if (BasePrefs.clockGreeting(this)) greeting() else null
+        shownGreeting = greet
         when (style) {
-            "single" -> col.addView(clock(df.replace("EEEE", "EEE") + "  ·  " + tf, 17f * k, LauncherTheme.text, false))
-            "time" -> col.addView(clock(tf, 24f * k, LauncherTheme.text, false))
+            "single" -> col.addView(clock(df.replace("EEEE", "EEE") + "  ·  " + tf, 17f * k, hText, false))
+            "time" -> col.addView(clock(tf, 24f * k, hText, false))
             "big" -> {
-                greet?.let { col.addView(Ui.text(this, it, 20f, LauncherTheme.accent, true)) }
-                col.addView(clock(tf, 72f, LauncherTheme.text, true))
-                col.addView(clock(df, 22f, LauncherTheme.softText, false))
+                greet?.let { col.addView(Ui.text(this, it, 20f, hAccent, true)) }
+                col.addView(clock(tf, 72f, hText, true))
+                col.addView(clock(df, 22f, hSoft, false))
                 col.setPadding(0, dp(6), 0, dp(10))
             }
             else -> {
-                col.addView(clock(tf, 24f * k, LauncherTheme.text, false))
-                val dateLine = clock(df, 12.5f * k, LauncherTheme.softText, false)
+                col.addView(clock(tf, 24f * k, hText, false))
+                val dateLine = clock(df, 12.5f * k, hSoft, false)
                 if (greet != null) {
                     val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-                    row.addView(Ui.text(this, "$greet · ", 12.5f * k, LauncherTheme.accent, true).apply { maxLines = 1 })
+                    row.addView(Ui.text(this, "$greet · ", 12.5f * k, hAccent, true).apply { maxLines = 1 })
                     row.addView(dateLine)
                     col.addView(row)
                 } else col.addView(dateLine)
@@ -825,10 +933,15 @@ class MainActivity : Activity() {
         Img.load(img, src, w) { ok -> if (!ok) fallbackArt(img, pkg) }
     }
 
+    private var shownGreeting: String? = null
+
+    /** Changes through the day: morning, afternoon, evening, night, and past midnight. */
     private fun greeting(): String = when (Calendar.getInstance().get(Calendar.HOUR_OF_DAY)) {
         in 5..11 -> "Good morning"
-        in 12..17 -> "Good afternoon"
-        else -> "Good evening"
+        in 12..16 -> "Good afternoon"
+        in 17..20 -> "Good evening"
+        in 21..23 -> "Good night"
+        else -> "Past midnight"
     }
 
     private fun appName(pkg: String?) = pkg?.let { AppRepository.label(this, it) }

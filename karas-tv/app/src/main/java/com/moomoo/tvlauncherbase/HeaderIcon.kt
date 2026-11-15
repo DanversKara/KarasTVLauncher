@@ -28,13 +28,16 @@ class HeaderIcon(c: Context, val kind: Kind) : View(c) {
     private val r = RectF()
 
     init { isFocusable = false; isDuplicateParentStateEnabled = true }
+    /** Color override (the header picks a color that reads on the wallpaper behind it). */
+    var tint: Int? = null
+        set(v) { field = v; invalidate() }
 
     override fun onDraw(canvas: Canvas) {
         val s = minOf(width, height).toFloat()
         if (s <= 0f) return
         canvas.save()
         canvas.translate((width - s) / 2f, (height - s) / 2f)
-        p.color = LauncherTheme.text
+        p.color = tint ?: LauncherTheme.text
         p.strokeWidth = s * 0.085f
         p.style = Paint.Style.STROKE
         when (kind) {

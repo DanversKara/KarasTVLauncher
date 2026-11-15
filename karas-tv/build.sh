@@ -20,8 +20,8 @@ APKSIGNER="${APKSIGNER:-$BT/apksigner}"
 KOTLINC="${KOTLINC:-$HOME/kotlinc}"
 KEYSTORE="${KEYSTORE:-$HOME/.android/debug.keystore}"
 PKG=com.moomoo.tvlauncherbase
-VCODE=18
-VNAME=2.8.1
+VCODE=19
+VNAME=2.8.2
 
 if [ ! -f "$KEYSTORE" ]; then
   mkdir -p "$(dirname "$KEYSTORE")"
