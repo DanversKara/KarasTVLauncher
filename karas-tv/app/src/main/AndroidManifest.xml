@@ -89,6 +89,18 @@
         <activity android:name=".CameraWallActivity" android:exported="false"
             android:theme="@style/Theme.Base.Fullscreen"
             android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize" />
+        <activity android:name=".IptvActivity" android:exported="false"
+            android:theme="@style/Theme.Base.Fullscreen"
+            android:screenOrientation="landscape"
+            android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize" />
+        <activity android:name=".IptvGuideActivity" android:exported="false"
+            android:theme="@style/Theme.Base.Fullscreen"
+            android:screenOrientation="landscape"
+            android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize" />
+        <activity android:name=".IptvGridActivity" android:exported="false"
+            android:theme="@style/Theme.Base.Fullscreen"
+            android:screenOrientation="landscape"
+            android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize" />
         <activity android:name=".OverlaySettingsActivity" android:exported="false" />
         <activity android:name=".CustomizeActivity" android:exported="false" />
         <activity android:name=".WatchActivity" android:exported="false" />

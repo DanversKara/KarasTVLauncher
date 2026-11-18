@@ -79,6 +79,21 @@ object Ui {
         v.clipToOutline = true
     }
 
+    /** Frosted "glass" fill: the theme surface, slightly see-through, with a hairline edge. */
+    fun glass(c: Context, radiusDp: Int = LauncherTheme.CORNER_DP, alpha: Int = 0xE0) = GradientDrawable().apply {
+        setColor((LauncherTheme.surface and 0x00FFFFFF) or (alpha shl 24))
+        cornerRadius = dpf(c, radiusDp.toFloat())
+        setStroke(dp(c, 1), (LauncherTheme.text and 0x00FFFFFF) or 0x22000000)
+    }
+
+    /** A vertical container on a glass background (menus, popups). */
+    fun glassPanel(c: Context, radiusDp: Int = 24, padDp: Int = 16) = android.widget.LinearLayout(c).apply {
+        orientation = android.widget.LinearLayout.VERTICAL
+        background = glass(c, radiusDp, 0xF0)
+        setPadding(dp(c, padDp), dp(c, padDp), dp(c, padDp), dp(c, padDp))
+        elevation = dpf(c, 12f)
+    }
+
     fun rounded(c: Context, color: Int, radiusDp: Int = LauncherTheme.CORNER_DP) =
         GradientDrawable().apply { setColor(color); cornerRadius = dpf(c, radiusDp.toFloat()) }
 

@@ -510,6 +510,66 @@ object BasePrefs {
     }
 
     // ---------------------------------------------------------------- backup
+    // ---------------------------------------------------------------- 2.9: quick menu, logo, IPTV, web editor
+    /** Quick-menu slot override: a built-in id, "hidden", or "app:<package>"; null = the slot's default. */
+    fun quickAction(c: Context, slot: String): String? = p(c).getString("quick_$slot", null)
+    fun setQuickAction(c: Context, slot: String, id: String?) = edit(c) {
+        if (id == null) remove("quick_$slot") else putString("quick_$slot", id)
+    }
+
+    /** Custom icon for a quick-menu slot (absolute path in the app files dir, uploaded from the web editor). */
+    fun quickIconFile(c: Context, slot: String): String? = p(c).getString("quickicon_$slot", null)
+    fun setQuickIconFile(c: Context, slot: String, path: String?) = edit(c) {
+        if (path == null) remove("quickicon_$slot") else putString("quickicon_$slot", path)
+    }
+
+    /** Header logo image (absolute path); null = show the name text. */
+    fun logoPath(c: Context): String? = p(c).getString("logo_path", null)
+    fun setLogoPath(c: Context, path: String?) = edit(c) {
+        if (path == null) remove("logo_path") else putString("logo_path", path)
+    }
+    fun logoSizeDp(c: Context): Int = p(c).getInt("logo_size", 44).coerceIn(20, 120)
+    fun setLogoSizeDp(c: Context, v: Int) = edit(c) { putInt("logo_size", v.coerceIn(20, 120)) }
+
+    /** LAN web editor at http://<tv-ip>:8080 — on by default. */
+    fun webEditorEnabled(c: Context): Boolean = p(c).getBoolean("web_editor", true)
+    fun setWebEditorEnabled(c: Context, v: Boolean) = edit(c) { putBoolean("web_editor", v) }
+
+    /** Hand-added IPTV channels. Starts empty — no channels ship with the app. */
+    fun iptvChannels(c: Context): MutableList<IptvChannel> {
+        val raw = p(c).getString("iptv_channels", null) ?: return mutableListOf()
+        return try {
+            val a = JSONArray(raw)
+            MutableList(a.length()) { IptvChannel.fromJson(a.getJSONObject(it)) }
+        } catch (e: Exception) { mutableListOf() }
+    }
+    fun setIptvChannels(c: Context, list: List<IptvChannel>) = edit(c) {
+        putString("iptv_channels", JSONArray().apply { list.forEach { put(it.toJson()) } }.toString())
+    }
+
+    /** Favorite IPTV channels, keyed by EpgParser.normalizeName(channel name). */
+    fun iptvFavorites(c: Context): List<String> {
+        val raw = p(c).getString("iptv_favorites", null) ?: return emptyList()
+        return try {
+            val a = JSONArray(raw); List(a.length()) { a.getString(it) }.distinct()
+        } catch (e: Exception) { emptyList() }
+    }
+    fun setIptvFavorites(c: Context, keys: List<String>) = edit(c) {
+        putString("iptv_favorites", JSONArray(keys.distinct()).toString())
+    }
+    fun isIptvFavorite(c: Context, key: String): Boolean = key in iptvFavorites(c)
+    /** Returns true when the channel is now a favorite. */
+    fun toggleIptvFavorite(c: Context, key: String): Boolean {
+        val l = iptvFavorites(c).toMutableList()
+        val on = if (l.remove(key)) false else { l += key; true }
+        setIptvFavorites(c, l)
+        return on
+    }
+
+    /** Which TV guide the 📺 button opens: "grid" or "list". */
+    fun iptvGuideView(c: Context): String = p(c).getString("iptv_guide_view", "grid") ?: "grid"
+    fun setIptvGuideView(c: Context, v: String) = edit(c) { putString("iptv_guide_view", v) }
+
     fun exportJson(c: Context): String {
         val o = JSONObject()
         for ((k, v) in p(c).all) when (v) {
@@ -574,4 +634,12 @@ data class Camera(
         .put("name", name).put("url", url).put("type", type).put("user", user)
         .put("pass", pass).put("onHome", onHome).put("refreshMs", refreshMs)
         .put("rotation", rotation)
+}
+
+/** One hand-added IPTV channel (a single stream). */
+data class IptvChannel(val name: String, val url: String) {
+    companion object {
+        fun fromJson(o: JSONObject) = IptvChannel(o.optString("name", "Channel"), o.optString("url", ""))
+    }
+    fun toJson(): JSONObject = JSONObject().put("name", name).put("url", url)
 }

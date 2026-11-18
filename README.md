@@ -1,6 +1,6 @@
 # Kara's TV Launcher
 
-## [Kara's TV](karas-tv/) — v2.8.2
+## [Kara's TV](karas-tv/) — v2.9.10
 
 An ad-free, animated home screen for Google TV / Android TV (built for the onn. Google TV box). Features:
 
@@ -12,8 +12,8 @@ An ad-free, animated home screen for Google TV / Android TV (built for the onn. 
 - backups that survive "Clear storage", named by date and time
 - built-in updates from GitHub (Settings → Check for updates)
 - a header that adapts its colors to the wallpaper so it's always readable
-- IPTV: import M3U playlists and browse them in a grid or list TV guide with now/next guide data (coming in 2.9)
-- a LAN-only web editor: change buttons, icons, logo and IPTV from a browser at http://<TV-IP>:8080 (coming in 2.9)
+- IPTV: import M3U playlists and browse them in a grid or list TV guide with now/next guide data
+- a LAN-only web editor: change buttons, icons, logo and IPTV from a browser at http://<TV-IP>:8080
 
 <table>
 <tr>
@@ -26,10 +26,10 @@ An ad-free, animated home screen for Google TV / Android TV (built for the onn. 
 </tr>
 </table>
 
-**Install:** download [`karas-tv/release/karas-tv-2.8.2.apk`](karas-tv/release/karas-tv-2.8.2.apk), then run
+**Install:** download [`karas-tv/release/karas-tv-2.9.10.apk`](karas-tv/release/karas-tv-2.9.10.apk), then run
 
 ```
-adb install -r karas-tv-2.8.2.apk
+adb install -r karas-tv-2.9.10.apk
 ```
 
 Full feature list, setup steps and build instructions are in [karas-tv/README.md](karas-tv/README.md).

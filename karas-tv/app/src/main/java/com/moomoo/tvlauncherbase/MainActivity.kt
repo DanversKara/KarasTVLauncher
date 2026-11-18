@@ -181,11 +181,25 @@ class MainActivity : Activity() {
         }
         if (android.os.Build.VERSION.SDK_INT >= 33) registerReceiver(pkgReceiver, f, RECEIVER_NOT_EXPORTED)
         else registerReceiver(pkgReceiver, f)
+        // Web editor (and IPTV) saves: rebuild home live, no restart.
+        val wf = IntentFilter(WebEditorServer.ACTION_REFRESH)
+        if (android.os.Build.VERSION.SDK_INT >= 33) registerReceiver(webEditReceiver, wf, RECEIVER_NOT_EXPORTED)
+        else registerReceiver(webEditReceiver, wf)
+        WebEditorServer.applyEnabled(this)
         BootReceiver.scheduleWatchdog(this)
+    }
+
+    private val webEditReceiver = object : BroadcastReceiver() {
+        override fun onReceive(c: Context, i: Intent) {
+            dirty = true
+            if (resumed) rebuild()
+        }
     }
 
     override fun onDestroy() {
         try { unregisterReceiver(pkgReceiver) } catch (e: Exception) {}
+        try { unregisterReceiver(webEditReceiver) } catch (e: Exception) {}
+        dismissQuickMenu()
         super.onDestroy()
     }
 
@@ -595,10 +609,9 @@ class MainActivity : Activity() {
         }
         val search = iconButton(HeaderIcon.Kind.SEARCH, "top:search", "Search") { openSearch() }
         if (BasePrefs.showSearch(this)) left.addView(search)
-        val apps = textTab(if (tab == "apps") "✕  Apps" else "Apps", tab == "apps", "top:apps") {
-            tab = if (tab == "apps") "home" else "apps"; rebuild()
-        }
-        left.addView(apps)
+        // Apps and Customize live in the quick menu (clock pill); the tab shows only while Apps is open.
+        val apps: View? = if (tab == "apps") textTab("✕  Apps", true, "top:apps") { tab = "home"; rebuild() } else null
+        apps?.let { left.addView(it) }
         if (BasePrefs.cameras(this).isNotEmpty()) {
             if (BasePrefs.showCamButton(this))
                 left.addView(iconButton(HeaderIcon.Kind.CAMERA, "top:cams", "Cameras") {
@@ -607,6 +620,9 @@ class MainActivity : Activity() {
             if (BasePrefs.showFloatButton(this))
                 left.addView(iconButton(HeaderIcon.Kind.PIP, "top:float", "Floating cameras") { OverlayManager.toggle(this) })
         }
+        val tv = iconButton(HeaderIcon.Kind.TV, "top:tv", "TV channels — hold to manage") { IptvChannels.playOrPick(this) }
+        tv.setOnLongClickListener { IptvChannels.manage(this); true }
+        left.addView(tv)
         (left.getChildAt(left.childCount - 1).layoutParams as? LinearLayout.LayoutParams)?.marginEnd = 0
         bar.addView(left)
         bar.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f))
@@ -619,11 +635,17 @@ class MainActivity : Activity() {
         if (wx != null) right.addView(wx)
         val clock = if (BasePrefs.clockStyle(this) != "big") clockView() else null
         if (wx != null && clock != null) right.addView(divider())
-        clock?.let { right.addView(it) }
-        right.addView(View(this), LinearLayout.LayoutParams(hdp(14f), 1))
-        right.addView(iconButton(HeaderIcon.Kind.EDIT, "top:customize", "Customize home") {
-            startActivity(Intent(this, CustomizeActivity::class.java))
-        })
+        // The clock is the "profile pill": OK opens the quick menu.
+        val pill: View = if (clock != null) FrameLayout(this).apply {
+            tag = "top:quick"; contentDescription = "Quick menu"
+            isFocusable = true; isClickable = true
+            background = Ui.focusBg(this@MainActivity, Color.TRANSPARENT, 16)
+            setPadding(hdp(8f), hdp(2f), hdp(10f), hdp(2f))
+            addView(clock)
+            setOnClickListener { showQuickMenu(this) }
+        } else iconButton(HeaderIcon.Kind.PERSON, "top:quick", "Quick menu") {}.also { b -> b.setOnClickListener { showQuickMenu(b) } }
+        right.addView(pill)
+        right.addView(View(this), LinearLayout.LayoutParams(hdp(10f), 1))
         val settings = iconButton(HeaderIcon.Kind.SETTINGS, "top:settings", "Settings") {
             startActivity(Intent(this, SettingsActivity::class.java))
         }
@@ -632,7 +654,7 @@ class MainActivity : Activity() {
         bar.addView(right)
 
         // ◀ on the first button and ▶ on Settings stay put.
-        val first = if (BasePrefs.showSearch(this)) search else apps
+        val first = if (BasePrefs.showSearch(this)) search else apps ?: tv
         first.id = View.generateViewId(); settings.id = View.generateViewId()
         first.nextFocusLeftId = first.id
         settings.nextFocusRightId = settings.id
@@ -813,7 +835,301 @@ class MainActivity : Activity() {
     }
 
     private fun nameBadge(sp: Float): View? =
-        NameBadge(this, sp).apply { shimmer = BasePrefs.nameShimmer(this@MainActivity) }
+        logoView() ?: NameBadge(this, sp).apply { shimmer = BasePrefs.nameShimmer(this@MainActivity) }
+
+    private var logoCache: Triple<String, Int, android.graphics.Bitmap>? = null
+
+    /** The web-editor logo in place of the name text; null (→ text badge) on any problem. */
+    private fun logoView(): View? {
+        val path = BasePrefs.logoPath(this) ?: return null
+        val f = java.io.File(path)
+        if (!f.isFile) return null
+        val sizeDp = BasePrefs.logoSizeDp(this)
+        val key = path + "@" + f.lastModified()
+        val bmp = logoCache?.takeIf { it.first == key && it.second == sizeDp }?.third ?: try {
+            val target = dp(sizeDp) * 2
+            val o = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            android.graphics.BitmapFactory.decodeFile(path, o)
+            if (o.outHeight <= 0) return null
+            var sample = 1
+            while (o.outHeight / (sample * 2) >= target) sample *= 2
+            android.graphics.BitmapFactory.decodeFile(path, android.graphics.BitmapFactory.Options().apply { inSampleSize = sample })
+        } catch (e: Throwable) { null } ?: return null
+        logoCache = Triple(key, sizeDp, bmp)
+        return ImageView(this).apply {
+            setImageBitmap(bmp)
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            adjustViewBounds = true
+            maxHeight = dp(sizeDp)
+            contentDescription = Brand.name
+        }
+    }
+
+    // ---------------------------------------------------------------- quick menu (2.9)
+    private data class QuickAction(val id: String, val label: String, val kind: HeaderIcon.Kind?, val pkg: String?)
+
+    private val QUICK_TILES = listOf("tile0", "tile1", "tile2", "tile3", "tile4")
+    private val QUICK_ICONS = listOf("icon0", "icon1", "icon2", "icon3", "icon4", "icon5", "icon6")
+    private val QUICK_BUILTIN_IDS = listOf("power", "wifi", "recents", "audio", "sleep", "search", "games", "photos",
+        "home", "apps", "customize", "settings", "guide", "sys_settings", "bt", "display", "apps_settings", "storage",
+        "network", "about", "datetime", "accessibility", "developer", "screensaver", "keyboard", "restart")
+    private var quickMenu: android.widget.PopupWindow? = null
+
+    /** Keep identical to SLOT_DEFS in WebEditor.kt. */
+    private fun quickDefaults(slot: String): String = when (slot) {
+        "tile0" -> "power"; "tile1" -> "wifi"; "tile2" -> "recents"; "tile3" -> "audio"; "tile4" -> "sleep"
+        "icon0" -> "search"; "icon1" -> "games"; "icon2" -> "photos"; "icon3" -> "home"
+        "icon4" -> "apps"; "icon5" -> "customize"; else -> "settings"
+    }
+
+    private fun quickBuiltin(id: String): QuickAction? {
+        val K = HeaderIcon.Kind.SETTINGS
+        val (label, kind) = when (id) {
+            "power" -> "Power Off" to HeaderIcon.Kind.POWER
+            "wifi" -> "Wi-Fi" to HeaderIcon.Kind.WIFI
+            "recents" -> "Recent Apps" to HeaderIcon.Kind.RECENTS
+            "audio" -> "Audio" to HeaderIcon.Kind.AUDIO
+            "sleep" -> "Sleep Timer" to HeaderIcon.Kind.SLEEP
+            "search" -> "Search" to HeaderIcon.Kind.SEARCH
+            "games" -> "Games" to HeaderIcon.Kind.GAMES
+            "photos" -> "Photos" to HeaderIcon.Kind.PHOTOS
+            "home" -> "Home" to HeaderIcon.Kind.HOME
+            "apps" -> "Apps" to HeaderIcon.Kind.APPS
+            "customize" -> "Customize" to HeaderIcon.Kind.EDIT
+            "settings" -> "Settings" to HeaderIcon.Kind.SETTINGS
+            "guide" -> "TV guide" to HeaderIcon.Kind.TV
+            "sys_settings" -> "Android settings" to K
+            "bt" -> "Bluetooth" to K
+            "display" -> "Display" to K
+            "apps_settings" -> "Manage apps" to K
+            "storage" -> "Storage" to K
+            "network" -> "Network" to K
+            "about" -> "About this TV" to K
+            "datetime" -> "Date & time" to K
+            "accessibility" -> "Accessibility" to K
+            "developer" -> "Developer options" to K
+            "screensaver" -> "Screensaver" to K
+            "keyboard" -> "Keyboard" to K
+            "restart" -> "Restart launcher" to HeaderIcon.Kind.POWER
+            "hidden" -> return QuickAction("hidden", "Hidden", null, null)
+            else -> return null
+        }
+        return QuickAction(id, label, kind, null)
+    }
+
+    /** Stored id or default → built-in → installed app → (unknown / uninstalled) the slot default. Never throws. */
+    private fun quickActionFor(slot: String): QuickAction {
+        val id = BasePrefs.quickAction(this, slot) ?: quickDefaults(slot)
+        quickBuiltin(id)?.let { return it }
+        if (id.startsWith("app:")) {
+            val pkg = id.removePrefix("app:")
+            AppRepository.find(this, pkg)?.let { return QuickAction(id, it.label, null, pkg) }
+        }
+        return quickBuiltin(quickDefaults(slot))!!
+    }
+
+    private fun dismissQuickMenu() {
+        try { quickMenu?.dismiss() } catch (e: Exception) {}
+        quickMenu = null
+    }
+
+    private fun showQuickMenu(anchor: View) {
+        dismissQuickMenu()
+        val panel = Ui.glassPanel(this, 24, 16)
+        val tiles = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_HORIZONTAL }
+        var first: View? = null
+        for (slot in QUICK_TILES) {
+            val a = quickActionFor(slot)
+            if (a.id == "hidden") continue
+            val v = quickTile(slot, a)
+            if (first == null) first = v
+            tiles.addView(v)
+        }
+        val icons = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_HORIZONTAL }
+        for (slot in QUICK_ICONS) {
+            val a = quickActionFor(slot)
+            if (a.id == "hidden") continue
+            val v = quickIcon(slot, a)
+            if (first == null) first = v
+            icons.addView(v)
+        }
+        if (tiles.childCount > 0) panel.addView(tiles, LinearLayout.LayoutParams(-1, -2))
+        if (icons.childCount > 0) panel.addView(icons, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(14) })
+        panel.addView(Ui.text(this, "Hold a button to change it · hidden buttons come back from the web editor",
+            12f, LauncherTheme.dimText).apply { gravity = Gravity.CENTER; setPadding(0, dp(12), 0, 0) },
+            LinearLayout.LayoutParams(-1, -2))
+        val pw = minOf(dp(600), (resources.displayMetrics.widthPixels * 0.62f).toInt())
+        val win = android.widget.PopupWindow(panel, pw, LinearLayout.LayoutParams.WRAP_CONTENT, true).apply {
+            setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
+            isOutsideTouchable = true
+            elevation = Ui.dpf(this@MainActivity, 16f)
+            setOnDismissListener { if (quickMenu === this) quickMenu = null }
+        }
+        quickMenu = win
+        try { win.showAsDropDown(anchor, anchor.width - pw, dp(8)) } catch (e: Exception) { quickMenu = null; return }
+        first?.post { first.requestFocus() }
+    }
+
+    private fun quickButtonIcon(slot: String, a: QuickAction): android.graphics.drawable.Drawable? {
+        BasePrefs.quickIconFile(this, slot)?.let { path ->
+            try { android.graphics.BitmapFactory.decodeFile(path)?.let { return android.graphics.drawable.BitmapDrawable(resources, it) } } catch (e: Throwable) {}
+        }
+        a.pkg?.let { pkg -> AppRepository.find(this, pkg)?.let { return AppRepository.icon(this, it) } }
+        return null
+    }
+
+    private fun quickGlyph(slot: String, a: QuickAction, sizeDp: Int): View {
+        val d = quickButtonIcon(slot, a)
+        return if (d != null) ImageView(this).apply { setImageDrawable(d); scaleType = ImageView.ScaleType.FIT_CENTER }
+        else HeaderIcon(this, a.kind ?: HeaderIcon.Kind.SETTINGS)
+    }
+
+    private fun quickLabel(a: QuickAction): String {
+        val m = HomeGuardService.sleepMinutesLeft()
+        return if (a.id == "sleep" && m > 0) "Sleep $m min" else a.label
+    }
+
+    private fun quickTile(slot: String, a: QuickAction): View = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
+        isFocusable = true; isClickable = true
+        background = Ui.focusBg(this@MainActivity, (LauncherTheme.surfaceHi and 0x00FFFFFF) or 0xCC000000.toInt(), 18)
+        setPadding(dp(6), dp(10), dp(6), dp(8))
+        addView(quickGlyph(slot, a, 36), LinearLayout.LayoutParams(dp(36), dp(36)))
+        addView(Ui.text(this@MainActivity, quickLabel(a), 13.5f, LauncherTheme.text, true).apply {
+            gravity = Gravity.CENTER; maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END; setPadding(0, dp(8), 0, 0)
+        })
+        layoutParams = LinearLayout.LayoutParams(dp(102), dp(104)).apply { marginStart = dp(3); marginEnd = dp(3) }
+        setOnClickListener { runQuickAction(a) }
+        setOnLongClickListener { editQuickAction(slot); true }
+    }
+
+    private fun quickIcon(slot: String, a: QuickAction): View = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL
+        val circle = FrameLayout(this@MainActivity).apply {
+            isFocusable = true; isClickable = true
+            background = Ui.focusBg(this@MainActivity, (LauncherTheme.surfaceHi and 0x00FFFFFF) or 0xCC000000.toInt(), 999)
+            addView(quickGlyph(slot, a, 28), FrameLayout.LayoutParams(dp(28), dp(28), Gravity.CENTER))
+            contentDescription = a.label
+            setOnClickListener { runQuickAction(a) }
+            setOnLongClickListener { editQuickAction(slot); true }
+        }
+        addView(circle, LinearLayout.LayoutParams(dp(56), dp(56)))
+        addView(Ui.text(this@MainActivity, quickLabel(a), 11f, LauncherTheme.softText).apply {
+            gravity = Gravity.CENTER; maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END; setPadding(0, dp(4), 0, 0)
+        }, LinearLayout.LayoutParams(dp(72), -2))
+        layoutParams = LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(2); marginEnd = dp(2) }
+    }
+
+    /** Long-press: Reset / Hidden / every built-in / every installed app. */
+    private fun editQuickAction(slot: String) {
+        val def = quickBuiltin(quickDefaults(slot))!!
+        val apps = AppRepository.visible(this)
+        val labels = ArrayList<String>()
+        labels += "Reset to default (${def.label})"
+        labels += "Hidden — don't show this button"
+        QUICK_BUILTIN_IDS.forEach { labels += quickBuiltin(it)!!.label }
+        apps.forEach { labels += "App: ${it.label}" }
+        Ui.choose(this, "Change this button", labels) { i ->
+            val id: String? = when {
+                i == 0 -> null
+                i == 1 -> "hidden"
+                i < 2 + QUICK_BUILTIN_IDS.size -> QUICK_BUILTIN_IDS[i - 2]
+                else -> "app:" + apps[i - 2 - QUICK_BUILTIN_IDS.size].packageName
+            }
+            BasePrefs.setQuickAction(this, slot, id)
+            if (id == "hidden") Ui.toast(this, "Hidden — bring it back from the web editor")
+            val anchor = headerView?.findViewWithTag<View>("top:quick")
+            dismissQuickMenu()
+            anchor?.let { showQuickMenu(it) }
+        }
+    }
+
+    private fun runQuickAction(a: QuickAction) {
+        dismissQuickMenu()
+        if (a.pkg != null) {
+            if (!AppRepository.launchPackage(this, a.pkg)) Ui.toast(this, "Can't open ${a.label}")
+            return
+        }
+        when (a.id) {
+            "power" -> if (HomeGuardService.instance?.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_POWER_DIALOG) != true)
+                Ui.toast(this, "Power menu needs the Home guard service on")
+            "wifi" -> RemoteKeys.run(this, RemoteKeys.WIFI_SETTINGS, null)
+            "audio" -> RemoteKeys.run(this, RemoteKeys.SOUND_SETTINGS, null)
+            "recents" -> recentApps()
+            "sleep" -> HomeGuardService.cycleSleepTimer(this)
+            "search" -> openSearch()
+            "games" -> openGames()
+            "photos" -> openPhotos()
+            "home" -> {
+                if (tab != "home") { tab = "home"; rebuild() }
+                scroll?.smoothScrollTo(0, 0); firstFocus?.requestFocus()
+            }
+            "apps" -> { tab = "apps"; rebuild() }
+            "customize" -> startActivity(Intent(this, CustomizeActivity::class.java))
+            "settings" -> startActivity(Intent(this, SettingsActivity::class.java))
+            "guide" -> IptvGuideActivity.open(this)
+            "sys_settings" -> openSystemPage(android.provider.Settings.ACTION_SETTINGS, a.label)
+            "bt" -> openSystemPage(android.provider.Settings.ACTION_BLUETOOTH_SETTINGS, a.label)
+            "display" -> openSystemPage(android.provider.Settings.ACTION_DISPLAY_SETTINGS, a.label)
+            "apps_settings" -> openSystemPage(android.provider.Settings.ACTION_APPLICATION_SETTINGS, a.label)
+            "storage" -> openSystemPage(android.provider.Settings.ACTION_INTERNAL_STORAGE_SETTINGS, a.label)
+            "network" -> openSystemPage(android.provider.Settings.ACTION_WIRELESS_SETTINGS, a.label)
+            "about" -> openSystemPage(android.provider.Settings.ACTION_DEVICE_INFO_SETTINGS, a.label)
+            "datetime" -> openSystemPage(android.provider.Settings.ACTION_DATE_SETTINGS, a.label)
+            "accessibility" -> openSystemPage(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS, a.label)
+            "developer" -> openSystemPage(android.provider.Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS, a.label)
+            "screensaver" -> openSystemPage(android.provider.Settings.ACTION_DREAM_SETTINGS, a.label)
+            "keyboard" -> openSystemPage(android.provider.Settings.ACTION_INPUT_METHOD_SETTINGS, a.label)
+            "restart" -> restartLauncher()
+            "hidden" -> {}
+        }
+    }
+
+    /** Some boxes lack some settings pages: fall back to main Settings, never crash. */
+    private fun openSystemPage(action: String, label: String) {
+        try { startActivity(Intent(action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+        catch (e: Exception) {
+            try { startActivity(Intent(android.provider.Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (x: Exception) {}
+            Ui.toast(this, "$label isn't on this TV — opened main Settings")
+        }
+    }
+
+    private fun restartLauncher() {
+        val i = Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+        val pi = android.app.PendingIntent.getActivity(this, 4711, i,
+            android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE)
+        (getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager)
+            .set(android.app.AlarmManager.RTC, System.currentTimeMillis() + 400, pi)
+        android.os.Process.killProcess(android.os.Process.myPid())
+    }
+
+    private fun recentApps() {
+        if (!RemoteKeys.run(this, RemoteKeys.RECENTS, null)) Ui.toast(this, "Recent apps needs the Home guard service on")
+    }
+
+    /** Installed games (apps marked as games); one opens directly, several give a list. */
+    private fun openGames() {
+        val games = AppRepository.visible(this).filter {
+            val ai = it.activityInfo.applicationInfo
+            ai.category == android.content.pm.ApplicationInfo.CATEGORY_GAME ||
+                @Suppress("DEPRECATION") (ai.flags and android.content.pm.ApplicationInfo.FLAG_IS_GAME) != 0
+        }
+        when (games.size) {
+            0 -> Ui.toast(this, "No games installed")
+            1 -> AppRepository.launchPackage(this, games[0].packageName)
+            else -> Ui.choose(this, "Games", games.map { it.label }) { AppRepository.launchPackage(this, games[it].packageName) }
+        }
+    }
+
+    private fun openPhotos() {
+        val tries = listOf(
+            Intent.makeMainSelectorActivity(Intent.ACTION_MAIN, Intent.CATEGORY_APP_GALLERY),
+            packageManager.getLeanbackLaunchIntentForPackage("com.google.android.apps.photos"),
+            packageManager.getLaunchIntentForPackage("com.google.android.apps.photos")
+        )
+        for (i in tries) if (i != null) try { startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); return } catch (e: Exception) {}
+        Ui.toast(this, "No photos app on this TV")
+    }
 
     private fun openSearch() {
         val tries = listOf(

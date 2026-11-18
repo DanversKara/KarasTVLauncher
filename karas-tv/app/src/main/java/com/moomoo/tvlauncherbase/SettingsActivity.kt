@@ -79,6 +79,7 @@ class SettingsActivity : RowListActivity() {
                 BasePrefs.setHidden(c, hidden[it], false); refresh()
             }
         }
+        out += Row("IPTV channels", IptvChannels.summary(c)) { IptvChannels.manage(c) }
         out += Row("Show TV inputs row", onOff(BasePrefs.showInputs(c))) {
             BasePrefs.setShowInputs(c, !BasePrefs.showInputs(c)); refresh()
         }
@@ -125,6 +126,14 @@ class SettingsActivity : RowListActivity() {
         out += Row("System", header = true)
         out += Row("Android TV settings", "Wi-Fi, display, remotes, apps…") {
             RemoteKeys.run(c, RemoteKeys.SYS_SETTINGS, null)
+        }
+        out += Row("Web editor", if (BasePrefs.webEditorEnabled(c))
+            "On — ${WebEditorServer.address(c) ?: "starting…"} · edit buttons, icons, logo & IPTV from your phone"
+            else "Off — tap to turn on") {
+            val on = !BasePrefs.webEditorEnabled(c)
+            BasePrefs.setWebEditorEnabled(c, on)
+            WebEditorServer.applyEnabled(c)
+            refresh()
         }
         out += Row("Backup", header = true)
         val last = BasePrefs.lastBackupAt(c)

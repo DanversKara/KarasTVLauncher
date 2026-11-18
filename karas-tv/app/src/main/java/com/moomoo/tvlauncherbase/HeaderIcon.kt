@@ -11,13 +11,13 @@ import kotlin.math.sin
 
 /**
  * Crisp line icons for the header, drawn in code in the style of Google's
- * Material Symbols (2 px rounded strokes): search, apps, camera,
- * picture-in-picture, edit and settings. They take the theme's text color,
+ * Material Symbols (2 px rounded strokes): header buttons plus the quick-menu
+ * glyphs (home, photos, games, power, Wi-Fi, recents, audio, sleep, TV, person). They take the theme's text color,
  * so they look right on every theme.
  */
 class HeaderIcon(c: Context, val kind: Kind) : View(c) {
 
-    enum class Kind { SEARCH, APPS, CAMERA, PIP, EDIT, SETTINGS }
+    enum class Kind { SEARCH, APPS, CAMERA, PIP, EDIT, SETTINGS, PERSON, HOME, PHOTOS, GAMES, POWER, WIFI, RECENTS, AUDIO, SLEEP, TV }
 
     private val p = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
@@ -95,6 +95,80 @@ class HeaderIcon(c: Context, val kind: Kind) : View(c) {
                 path.close()
                 canvas.drawPath(path, p)
                 canvas.drawCircle(cx, cy, s * 0.13f, p)
+            }
+            Kind.PERSON -> {
+                canvas.drawCircle(s * 0.5f, s * 0.36f, s * 0.16f, p)
+                r.set(s * 0.18f, s * 0.6f, s * 0.82f, s * 1.1f)
+                canvas.drawArc(r, 180f, 180f, false, p)
+            }
+            Kind.HOME -> {
+                path.reset()
+                path.moveTo(s * 0.14f, s * 0.48f); path.lineTo(s * 0.5f, s * 0.16f); path.lineTo(s * 0.86f, s * 0.48f)
+                canvas.drawPath(path, p)
+                path.reset()
+                path.moveTo(s * 0.24f, s * 0.4f); path.lineTo(s * 0.24f, s * 0.84f); path.lineTo(s * 0.76f, s * 0.84f); path.lineTo(s * 0.76f, s * 0.4f)
+                canvas.drawPath(path, p)
+                r.set(s * 0.42f, s * 0.6f, s * 0.58f, s * 0.84f)
+                canvas.drawRect(r, p)
+            }
+            Kind.PHOTOS -> {
+                r.set(s * 0.12f, s * 0.18f, s * 0.88f, s * 0.82f)
+                canvas.drawRoundRect(r, s * 0.08f, s * 0.08f, p)
+                path.reset()
+                path.moveTo(s * 0.2f, s * 0.72f); path.lineTo(s * 0.42f, s * 0.48f); path.lineTo(s * 0.58f, s * 0.64f)
+                path.lineTo(s * 0.66f, s * 0.56f); path.lineTo(s * 0.8f, s * 0.72f)
+                canvas.drawPath(path, p)
+                canvas.drawCircle(s * 0.66f, s * 0.36f, s * 0.06f, p)
+            }
+            Kind.GAMES -> {
+                r.set(s * 0.1f, s * 0.3f, s * 0.9f, s * 0.74f)
+                canvas.drawRoundRect(r, s * 0.2f, s * 0.2f, p)
+                canvas.drawLine(s * 0.25f, s * 0.52f, s * 0.41f, s * 0.52f, p)
+                canvas.drawLine(s * 0.33f, s * 0.44f, s * 0.33f, s * 0.6f, p)
+                p.style = Paint.Style.FILL
+                canvas.drawCircle(s * 0.62f, s * 0.47f, s * 0.045f, p)
+                canvas.drawCircle(s * 0.72f, s * 0.57f, s * 0.045f, p)
+            }
+            Kind.POWER -> {
+                r.set(s * 0.2f, s * 0.22f, s * 0.8f, s * 0.82f)
+                canvas.drawArc(r, -60f, 300f, false, p)
+                canvas.drawLine(s * 0.5f, s * 0.12f, s * 0.5f, s * 0.48f, p)
+            }
+            Kind.WIFI -> {
+                for ((i, rad) in listOf(0.42f, 0.28f, 0.14f).withIndex()) {
+                    r.set(s * (0.5f - rad), s * (0.74f - rad), s * (0.5f + rad), s * (0.74f + rad))
+                    if (i < 3) canvas.drawArc(r, 225f, 90f, false, p)
+                }
+                p.style = Paint.Style.FILL
+                canvas.drawCircle(s * 0.5f, s * 0.74f, s * 0.05f, p)
+            }
+            Kind.RECENTS -> {
+                r.set(s * 0.26f, s * 0.26f, s * 0.86f, s * 0.78f)
+                canvas.drawRoundRect(r, s * 0.06f, s * 0.06f, p)
+                path.reset()
+                path.moveTo(s * 0.14f, s * 0.64f); path.lineTo(s * 0.14f, s * 0.2f); path.lineTo(s * 0.7f, s * 0.2f)
+                canvas.drawPath(path, p)
+            }
+            Kind.AUDIO -> {
+                path.reset()
+                path.moveTo(s * 0.14f, s * 0.4f); path.lineTo(s * 0.3f, s * 0.4f); path.lineTo(s * 0.5f, s * 0.22f)
+                path.lineTo(s * 0.5f, s * 0.78f); path.lineTo(s * 0.3f, s * 0.6f); path.lineTo(s * 0.14f, s * 0.6f); path.close()
+                canvas.drawPath(path, p)
+                r.set(s * 0.46f, s * 0.36f, s * 0.74f, s * 0.64f); canvas.drawArc(r, -50f, 100f, false, p)
+                r.set(s * 0.44f, s * 0.22f, s * 0.88f, s * 0.78f); canvas.drawArc(r, -50f, 100f, false, p)
+            }
+            Kind.SLEEP -> {   // crescent moon
+                val outer = Path().apply { addCircle(s * 0.48f, s * 0.52f, s * 0.34f, Path.Direction.CW) }
+                val inner = Path().apply { addCircle(s * 0.66f, s * 0.38f, s * 0.28f, Path.Direction.CW) }
+                outer.op(inner, Path.Op.DIFFERENCE)
+                canvas.drawPath(outer, p)
+            }
+            Kind.TV -> {
+                r.set(s * 0.1f, s * 0.24f, s * 0.9f, s * 0.74f)
+                canvas.drawRoundRect(r, s * 0.07f, s * 0.07f, p)
+                canvas.drawLine(s * 0.34f, s * 0.86f, s * 0.66f, s * 0.86f, p)
+                canvas.drawLine(s * 0.38f, s * 0.12f, s * 0.5f, s * 0.24f, p)
+                canvas.drawLine(s * 0.62f, s * 0.12f, s * 0.5f, s * 0.24f, p)
             }
         }
         canvas.restore()

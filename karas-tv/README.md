@@ -1,7 +1,7 @@
 # Kara's TV 2.7 — an ad-free, animated Google TV home with live CCTV, weather, what's-on, and a full button remapper
 
 **Package:** `com.moomoo.tvlauncherbase` (unchanged, so it installs over 1.x and keeps your settings)
-**Version:** 2.8.2 (versionCode 19) · shown on the TV as **Kara's TV** (rename it in Customize home → Name) · **Min SDK:** 26 · **Target SDK:** 34 · **Dependencies:** none (framework APIs only)
+**Version:** 2.9.10 (versionCode 29) · shown on the TV as **Kara's TV** (rename it in Customize home → Name) · **Min SDK:** 26 · **Target SDK:** 34 · **Dependencies:** none (framework APIs only)
 
 Built for Google TV / Android TV boxes such as the **onn. Google TV 4K / 4K Pro**, Chromecast with Google TV, and TVs running Google TV.
 
@@ -19,7 +19,18 @@ Built for Google TV / Android TV boxes such as the **onn. Google TV 4K / 4K Pro*
 </tr>
 </table>
 
-## What's new in 2.9 (upcoming — not in the 2.8.2 release yet)
+## What's new in 2.9.10
+
+2.9 restored onto 2.8.2: everything from 2.8.2 (wallpaper-aware header, updates from GitHub, dated backups) is kept.
+
+### Quick menu
+- Select the clock in the top bar (or the person icon when the clock is hidden) to open the quick menu: 5 big tiles (Power Off, Wi-Fi, Recent Apps, Audio, Sleep Timer) over 7 round buttons (Search, Games, Photos, Home, Apps, Customize, Settings). Apps and Customize live here now, not in the top bar.
+- Hold any button to change it: reset to default, hide it, any of 26 built-in actions (incl. TV guide, Android settings pages, Restart launcher), or any installed app. A hidden button comes back only from the web editor.
+- The Sleep tile shows the minutes left while a timer runs. A settings page your TV doesn't have falls back to main Settings.
+
+### Header logo
+- Upload a PNG or JPG in the web editor to replace the "Kara's TV" text in the top bar, with a height slider (20–120 dp). Remove it to bring the text back.
+
 
 ### IPTV: playlists, TV guide, and a grid guide
 - Import M3U playlists by URL or file upload, from the web editor or by long-pressing 📺 → Add playlist. Multiple playlists are saved; re-importing one refreshes it instead of duplicating it.
