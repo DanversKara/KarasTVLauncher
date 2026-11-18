@@ -35,6 +35,9 @@ class SettingsActivity : RowListActivity() {
         out += Row("Floating camera windows", OverlayManager.statusLine(c)) {
             startActivity(Intent(c, OverlaySettingsActivity::class.java))
         }
+        out += Row("Phone system notices", PbxNotices.statusLine(c)) {
+            startActivity(Intent(c, PbxSettingsActivity::class.java))
+        }
         out += Row(getString(R.string.keymap_title), "Remap any button: single, long and double press · service: " +
             ServiceSetup.a11yStatus(c)) {
             startActivity(Intent(c, KeyMapActivity::class.java))

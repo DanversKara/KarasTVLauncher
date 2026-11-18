@@ -197,6 +197,35 @@ object BasePrefs {
     fun weatherCache(c: Context): String? = p(c).getString("weather_cache", null)
     fun setWeatherCache(c: Context, v: String?) { p(c).edit().apply { if (v == null) remove("weather_cache") else putString("weather_cache", v) }.apply() }
 
+    // ---------------------------------------------------------------- phone system (OwnPBX)
+    /**
+     * Banners for what happens on the phone system: a call ringing, a text, a chat message,
+     * a voicemail. The address and token come from the PBX's "TV Launcher notifications"
+     * plugin page; nothing here can change anything on the PBX, it only asks.
+     */
+    fun pbxEnabled(c: Context): Boolean = p(c).getBoolean("pbx_on", false)
+    fun setPbxEnabled(c: Context, v: Boolean) = edit(c) { putBoolean("pbx_on", v) }
+    fun pbxUrl(c: Context): String = (p(c).getString("pbx_url", "") ?: "").trim()
+    fun setPbxUrl(c: Context, v: String) = edit(c) { putString("pbx_url", v.trim().trimEnd('/')) }
+    fun pbxToken(c: Context): String = (p(c).getString("pbx_token", "") ?: "").trim()
+    fun setPbxToken(c: Context, v: String) = edit(c) { putString("pbx_token", v.trim()) }
+
+    /** Which kinds to show: call, sms, chat, voicemail. All on to begin with. */
+    fun pbxShows(c: Context, kind: String): Boolean = p(c).getBoolean("pbx_show_$kind", true)
+    fun setPbxShows(c: Context, kind: String, v: Boolean) = edit(c) { putBoolean("pbx_show_$kind", v) }
+
+    /** How long a banner stays on screen, in seconds. */
+    fun pbxBannerSeconds(c: Context): Int = p(c).getInt("pbx_banner_s", 12)
+    fun setPbxBannerSeconds(c: Context, v: Int) = edit(c) { putInt("pbx_banner_s", v.coerceIn(3, 60)) }
+
+    /** How often to ask the PBX, in seconds. Short enough to catch a call while it rings. */
+    fun pbxPollSeconds(c: Context): Int = p(c).getInt("pbx_poll_s", 5)
+    fun setPbxPollSeconds(c: Context, v: Int) = edit(c) { putInt("pbx_poll_s", v.coerceIn(3, 120)) }
+
+    /** Which corner the banner appears in: tr, tl, br, bl. */
+    fun pbxCorner(c: Context): String = p(c).getString("pbx_corner", "tr") ?: "tr"
+    fun setPbxCorner(c: Context, v: String) = edit(c) { putString("pbx_corner", v) }
+
     /** Header size: 85, 100, 115, 130 (%). The header also shrinks automatically to always fit. */
     fun headerSize(c: Context): Int = p(c).getInt("header_size", 100)
     /** "auto" = header text/icons and a soft backdrop adapt to the wallpaper behind them; "theme" = theme colors. */

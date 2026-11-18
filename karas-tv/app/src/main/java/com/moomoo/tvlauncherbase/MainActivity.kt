@@ -210,6 +210,7 @@ class MainActivity : Activity() {
         ServiceSetup.selfEnable(this)
         ShowInfo.refreshStale(this)
         Updater.autoCheck(this)
+        PbxNotices.start(this)   // phone system banners, if they are switched on
         Weather.refresh(this) { if (resumed) bindWeather() }
         if (BasePrefs.wallpaperMode(this) == "discover") Discover.refresh(this) { if (resumed) { wallpaperSrc = "<new>"; applyWallpaper(heroItem) } }
         if (::animBg.isInitialized) { animBg.running = true; animBg.invalidate() }

@@ -102,6 +102,7 @@
             android:screenOrientation="landscape"
             android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize" />
         <activity android:name=".OverlaySettingsActivity" android:exported="false" />
+        <activity android:name=".PbxSettingsActivity" android:exported="false" />
         <activity android:name=".CustomizeActivity" android:exported="false" />
         <activity android:name=".WatchActivity" android:exported="false" />
         <activity android:name=".KeyTestActivity" android:exported="false" />

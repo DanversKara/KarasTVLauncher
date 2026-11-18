@@ -112,6 +112,9 @@ class HomeGuardService : AccessibilityService() {
         super.onServiceConnected()
         instance = this
         connectedAt = SystemClock.elapsedRealtime()
+        // Banners for the phone system live in this service's window when it is running,
+        // so they can appear over any app.
+        PbxNotices.start(this)
     }
 
     override fun onUnbind(intent: android.content.Intent?): Boolean {
