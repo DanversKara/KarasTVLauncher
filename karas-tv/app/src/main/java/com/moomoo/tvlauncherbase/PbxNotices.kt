@@ -134,15 +134,16 @@ object PbxNotices {
     }
 
     /**
-     * True the first time a notice is seen, false for a repeat within a minute.
+     * True the first time a notice is seen, false for a repeat moments later.
      *
      * The PBX decides what is new, but a screen that will not clear is the worst way to find out
-     * it got that wrong: one caller, one message, one banner, whatever the feed says.
+     * it got that wrong. The window only has to outlast a few polls, not a person: at a minute
+     * it also swallowed the second of two test calls from the same phone.
      */
     private fun fresh(n: Notice): Boolean {
         val now = System.currentTimeMillis()
         val key = "${n.type}|${n.number}|${n.to}|${n.text.take(40)}"
-        recent.entries.removeAll { now - it.value > 60_000 }
+        recent.entries.removeAll { now - it.value > 20_000 }
         if (recent.containsKey(key)) return false
         if (recent.size > 40) recent.remove(recent.keys.first())
         recent[key] = now
