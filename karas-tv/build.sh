@@ -28,9 +28,15 @@ ZIPALIGN="${ZIPALIGN:-$BT/zipalign}"
 APKSIGNER="${APKSIGNER:-$BT/apksigner}"
 KOTLINC="${KOTLINC:-$HOME/kotlinc}"
 KEYSTORE="${KEYSTORE:-$HOME/.android/debug.keystore}"
+# Android installs an update over an existing app only when both APKs carry the same signature,
+# so which key signs this matters. The debug key is the default and is made below if it is not
+# there; set KEYSTORE with KS_ALIAS, KS_PASS and KS_KEYPASS to sign with a permanent key instead.
+KS_ALIAS="${KS_ALIAS:-androiddebugkey}"
+KS_PASS="${KS_PASS:-android}"
+KS_KEYPASS="${KS_KEYPASS:-$KS_PASS}"
 PKG=com.moomoo.tvlauncherbase
-VCODE=31
-VNAME=2.9.12
+VCODE=32
+VNAME=2.9.13
 
 # Say which piece is missing. Without this the build dies later on an opaque
 # "No such file or directory" from aapt2 or kotlinc.
@@ -46,9 +52,15 @@ if [ -n "$missing" ]; then
 fi
 
 if [ ! -f "$KEYSTORE" ]; then
+  # A keystore that was asked for by name and is not there is a mistake worth stopping on:
+  # inventing a key in its place would produce an APK that cannot be installed as an update.
+  if [ -n "$KS_KEYSTORE_REQUIRED" ]; then
+    echo "build.sh: the signing keystore $KEYSTORE is not there." >&2
+    exit 1
+  fi
   mkdir -p "$(dirname "$KEYSTORE")"
-  keytool -genkeypair -keystore "$KEYSTORE" -storepass android -keypass android \
-    -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+  keytool -genkeypair -keystore "$KEYSTORE" -storepass "$KS_PASS" -keypass "$KS_KEYPASS" \
+    -alias "$KS_ALIAS" -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
 fi
 
 rm -rf out
@@ -77,6 +89,6 @@ echo "== package + align + sign =="
 cp out/base.apk out/unsigned.apk
 (cd out/dex && zip -q ../unsigned.apk classes*.dex)
 "$ZIPALIGN" -f 4 out/unsigned.apk out/aligned.apk
-"$APKSIGNER" sign --ks "$KEYSTORE" --ks-key-alias androiddebugkey \
-  --ks-pass pass:android --key-pass pass:android --out karas-tv-debug.apk out/aligned.apk
+"$APKSIGNER" sign --ks "$KEYSTORE" --ks-key-alias "$KS_ALIAS" \
+  --ks-pass "pass:$KS_PASS" --key-pass "pass:$KS_KEYPASS" --out karas-tv-debug.apk out/aligned.apk
 "$APKSIGNER" verify karas-tv-debug.apk && ls -la karas-tv-debug.apk

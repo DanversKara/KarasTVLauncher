@@ -86,7 +86,33 @@ jobs:
           unzip -q /tmp/kotlin.zip -d /tmp/kotlin
           mv /tmp/kotlin/kotlinc "$HOME/kotlinc"
 
+      - name: Set up the release signing key
+        id: keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          # Android only installs an update over an existing app when both APKs carry the SAME
+          # signature. build.sh signs with ~/.android/debug.keystore, and a runner starts without
+          # one, so it makes a new throwaway key every build: every release is then signed by a
+          # different key and the launcher's own updater refuses it. With the four secrets set,
+          # every release is signed with one permanent key and updates install.
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$HOME/release-key.jks"
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+            echo "Signing with the permanent release key."
+          else
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=No signing key::This APK is signed with a throwaway key, so it cannot be installed over an existing Kara's TV. Set ANDROID_KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS and KEY_PASSWORD in the repository secrets."
+          fi
+
       - name: Build APK
+        env:
+          KS_PASS: ${{ secrets.KEYSTORE_PASSWORD }}
+          KS_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KS_KEYPASS: ${{ secrets.KEY_PASSWORD }}
         run: |
           # These paths are exported here rather than in an `env:` block: the
           # workflow `env` context cannot read runner variables such as
@@ -94,6 +120,10 @@ jobs:
           export SDK="$ANDROID_HOME"
           export BT="$ANDROID_HOME/build-tools/34.0.0"
           export KOTLINC="$HOME/kotlinc"
+          if [ "${{ steps.keystore.outputs.signed }}" = "true" ]; then
+            export KEYSTORE="$HOME/release-key.jks"
+            export KS_KEYSTORE_REQUIRED=1
+          fi
           chmod +x karas-tv/build.sh
           ./karas-tv/build.sh
 
@@ -124,6 +154,14 @@ jobs:
             echo "Tag ${TAG} already exists, nothing to release."
             exit 0
           fi
-          gh release create "$TAG" "${{ steps.apk.outputs.path }}" \
-            --title "Kara's TV ${{ steps.version.outputs.name }}" \
-            --generate-notes
+          # An APK signed with a throwaway key cannot be installed over the one already on the
+          # TV, and the launcher's updater refuses it. Say so on the release itself rather than
+          # letting someone find out from the installer.
+          if [ "${{ steps.keystore.outputs.signed }}" = "true" ]; then
+            gh release create "$TAG" "${{ steps.apk.outputs.path }}" \
+              --title "Kara's TV ${{ steps.version.outputs.name }}" --generate-notes
+          else
+            gh release create "$TAG" "${{ steps.apk.outputs.path }}" \
+              --title "Kara's TV ${{ steps.version.outputs.name }}" \
+              --notes "**Signed with a temporary key.** Installing this over an existing Kara's TV will be refused, because Android only replaces an app when both APKs carry the same signature. Set the four \`ANDROID_KEYSTORE_*\` repository secrets so every release shares one permanent key."
+          fi
