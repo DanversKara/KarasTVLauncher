@@ -35,8 +35,8 @@ KS_ALIAS="${KS_ALIAS:-androiddebugkey}"
 KS_PASS="${KS_PASS:-android}"
 KS_KEYPASS="${KS_KEYPASS:-$KS_PASS}"
 PKG=com.moomoo.tvlauncherbase
-VCODE=33
-VNAME=2.9.14
+VCODE=34
+VNAME=2.9.15
 
 # Say which piece is missing. Without this the build dies later on an opaque
 # "No such file or directory" from aapt2 or kotlinc.

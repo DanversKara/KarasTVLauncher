@@ -168,10 +168,19 @@ object PbxNotices {
     /** Shows one notice now (used by the Test button too). */
     fun preview(c: Context, n: Notice) {
         main.post {
+            // Reinstalling the launcher takes its permission to draw over other apps with it, and
+            // a sample banner that simply does not appear says nothing about why.
+            if (host(c.applicationContext) == null) {
+                Ui.toast(c, "No permission to draw a banner yet — turn on Home guard in Settings → Accessibility, or allow “Display over other apps”.")
+                return@post
+            }
             queue.addFirst(n)
             if (shown == null) showNext(c.applicationContext)
         }
     }
+
+    /** True when a banner has somewhere to appear; false after a reinstall until it is allowed again. */
+    fun canShow(c: Context): Boolean = host(c.applicationContext) != null
 
     private fun showNext(app: Context) {
         val n = queue.removeFirstOrNull() ?: return
@@ -275,6 +284,7 @@ object PbxNotices {
         if (!BasePrefs.pbxEnabled(c)) return "Off"
         if (BasePrefs.pbxUrl(c).isBlank()) return "On — no PBX address yet"
         if (BasePrefs.pbxToken(c).isBlank()) return "On — no token yet"
+        if (!canShow(c)) return "On — but nothing may draw over other apps yet (see below)"
         val kinds = listOf("call" to "calls", "sms" to "SMS", "chat" to "chat", "voicemail" to "voicemail")
             .filter { BasePrefs.pbxShows(c, it.first) }.joinToString(", ") { it.second }
         return "On · ${if (kinds.isBlank()) "nothing chosen" else kinds} · every ${BasePrefs.pbxPollSeconds(c)}s"
