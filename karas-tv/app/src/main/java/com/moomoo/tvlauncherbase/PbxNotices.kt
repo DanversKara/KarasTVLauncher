@@ -35,6 +35,14 @@ object PbxNotices {
     private var shown: LinearLayout? = null
     private var shownWm: WindowManager? = null
     private val queue = ArrayDeque<Notice>()
+    /** What was on screen lately, so the same call or message cannot come back. */
+    private val recent = LinkedHashMap<String, Long>()
+    private var appRef: Context? = null
+    private val dismiss = Runnable {
+        hide()
+        val app = appRef
+        if (app != null && queue.isNotEmpty()) showNext(app)
+    }
 
     data class Notice(val type: String, val title: String, val who: String, val number: String,
                       val to: String, val line: String, val text: String)
@@ -46,6 +54,7 @@ object PbxNotices {
         val app = c.applicationContext
         if (running || !BasePrefs.pbxEnabled(app) || BasePrefs.pbxUrl(app).isBlank()) return
         running = true
+        appRef = app
         // The first answer only tells us where "now" is: a launcher coming back after hours
         // should not pour out everything it missed.
         since = -1L
@@ -54,7 +63,13 @@ object PbxNotices {
 
     fun stop() {
         running = false
-        main.post { hide() }
+        main.post {
+            // Without this a banner put up a moment ago keeps its old dismissal, and the next
+            // one inherits a timer that has already run: one of them stays on screen for good.
+            main.removeCallbacks(dismiss)
+            queue.clear()
+            hide()
+        }
     }
 
     /** Settings changed: pick them up without waiting for the next poll. */
@@ -86,8 +101,16 @@ object PbxNotices {
         val body = get(url, token)
         val o = JSONObject(body)
         if (!o.optBoolean("ok")) return
-        since = o.optLong("latest_id", maxOf(since, 0))
-        if (first) return   // only learn where we are; show nothing from before we started
+        if (first) {
+            // Start from where the PBX says "now" is. Reading latest_id instead left the cursor
+            // at 0 whenever nothing had happened yet, and the next poll emptied the whole window
+            // onto the screen at once.
+            since = o.optLong("now_id", o.optLong("latest_id", 0))
+            return
+        }
+        // A ringing call keeps one id while it rings, so the newest id can be older than the
+        // cursor: moving back to it would show the same call again and again.
+        since = maxOf(since, o.optLong("latest_id", since))
         val arr = o.optJSONArray("events") ?: return
         val wanted = (0 until arr.length()).mapNotNull { i ->
             val e = arr.optJSONObject(i) ?: return@mapNotNull null
@@ -105,9 +128,25 @@ object PbxNotices {
         }
         if (wanted.isEmpty()) return
         main.post {
-            queue.addAll(wanted)
+            queue.addAll(wanted.filter { fresh(it) })
             if (shown == null) showNext(app)
         }
+    }
+
+    /**
+     * True the first time a notice is seen, false for a repeat within a minute.
+     *
+     * The PBX decides what is new, but a screen that will not clear is the worst way to find out
+     * it got that wrong: one caller, one message, one banner, whatever the feed says.
+     */
+    private fun fresh(n: Notice): Boolean {
+        val now = System.currentTimeMillis()
+        val key = "${n.type}|${n.number}|${n.to}|${n.text.take(40)}"
+        recent.entries.removeAll { now - it.value > 60_000 }
+        if (recent.containsKey(key)) return false
+        if (recent.size > 40) recent.remove(recent.keys.first())
+        recent[key] = now
+        return true
     }
 
     private fun get(url: String, token: String): String {
@@ -189,10 +228,11 @@ object PbxNotices {
         }
         shown = panel
         shownWm = wm
-        main.postDelayed({
-            hide()
-            if (queue.isNotEmpty()) showNext(app)
-        }, BasePrefs.pbxBannerSeconds(app) * 1000L)
+        appRef = app
+        // One dismissal at a time: a second banner must not leave an older timer pending, or the
+        // wrong window gets taken down and this one never does.
+        main.removeCallbacks(dismiss)
+        main.postDelayed(dismiss, maxOf(BasePrefs.pbxBannerSeconds(app), 2) * 1000L)
     }
 
     private fun hide() {

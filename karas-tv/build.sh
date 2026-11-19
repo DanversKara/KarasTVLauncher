@@ -29,8 +29,8 @@ APKSIGNER="${APKSIGNER:-$BT/apksigner}"
 KOTLINC="${KOTLINC:-$HOME/kotlinc}"
 KEYSTORE="${KEYSTORE:-$HOME/.android/debug.keystore}"
 PKG=com.moomoo.tvlauncherbase
-VCODE=30
-VNAME=2.9.11
+VCODE=31
+VNAME=2.9.12
 
 # Say which piece is missing. Without this the build dies later on an opaque
 # "No such file or directory" from aapt2 or kotlinc.
