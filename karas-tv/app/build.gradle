@@ -11,8 +11,8 @@ android {
         applicationId "com.moomoo.tvlauncherbase"
         minSdk 26
         targetSdk 34
-        versionCode 34
-        versionName "2.9.15"
+        versionCode 35
+        versionName "2.9.16"
     }
 
     buildTypes {

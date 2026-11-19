@@ -165,27 +165,43 @@ object PbxNotices {
 
     // ------------------------------------------------------------ the banner
 
-    /** Shows one notice now (used by the Test button too). */
+    /**
+     * Shows one notice now, and says out loud what happened.
+     *
+     * A sample banner that just does not appear is the least useful answer there is: the window
+     * either has nowhere to live or Android refused it, and both used to be swallowed. This
+     * reports either way, so one tap on the settings screen tells you which.
+     */
     fun preview(c: Context, n: Notice) {
         main.post {
-            // Reinstalling the launcher takes its permission to draw over other apps with it, and
-            // a sample banner that simply does not appear says nothing about why.
-            if (host(c.applicationContext) == null) {
-                Ui.toast(c, "No permission to draw a banner yet — turn on Home guard in Settings → Accessibility, or allow “Display over other apps”.")
-                return@post
-            }
             queue.addFirst(n)
-            if (shown == null) showNext(c.applicationContext)
+            main.removeCallbacks(dismiss)
+            hide()
+            showNext(c.applicationContext) { problem -> Ui.toast(c, problem) }
         }
     }
 
     /** True when a banner has somewhere to appear; false after a reinstall until it is allowed again. */
     fun canShow(c: Context): Boolean = host(c.applicationContext) != null
 
-    private fun showNext(app: Context) {
+    /** What stopped the last banner from appearing, for the settings screen. */
+    @Volatile var lastProblem: String? = null
+        private set
+
+    private fun showNext(app: Context, say: ((String) -> Unit)? = null) {
         val n = queue.removeFirstOrNull() ?: return
-        val (ctx, type) = host(app) ?: return
-        val wm = ctx.getSystemService(WindowManager::class.java) ?: return
+        val hosted = host(app)
+        if (hosted == null) {
+            note("Nothing may draw over other apps yet — turn on Home guard in Settings → Accessibility, or allow “Display over other apps”.", say)
+            return
+        }
+        val (ctx, type) = hosted
+        val via = if (type == WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY) "Home guard" else "the overlay permission"
+        val wm = ctx.getSystemService(WindowManager::class.java)
+        if (wm == null) {
+            note("Android gave no window manager for $via.", say)
+            return
+        }
         val dm = ctx.resources.displayMetrics
 
         val panel = LinearLayout(ctx).apply {
@@ -233,8 +249,11 @@ object PbxNotices {
         try {
             wm.addView(panel, lp)
         } catch (e: Exception) {
+            note("Android refused the banner via $via: ${e.javaClass.simpleName} ${e.message}", say)
             return
         }
+        lastProblem = null
+        say?.invoke("Banner shown via $via for ${maxOf(BasePrefs.pbxBannerSeconds(app), 2)}s.")
         shown = panel
         shownWm = wm
         appRef = app
@@ -242,6 +261,12 @@ object PbxNotices {
         // wrong window gets taken down and this one never does.
         main.removeCallbacks(dismiss)
         main.postDelayed(dismiss, maxOf(BasePrefs.pbxBannerSeconds(app), 2) * 1000L)
+    }
+
+    /** Remembers why a banner did not appear, and tells whoever asked for it. */
+    private fun note(problem: String, say: ((String) -> Unit)?) {
+        lastProblem = problem
+        say?.invoke(problem)
     }
 
     private fun hide() {
@@ -285,9 +310,11 @@ object PbxNotices {
         if (BasePrefs.pbxUrl(c).isBlank()) return "On — no PBX address yet"
         if (BasePrefs.pbxToken(c).isBlank()) return "On — no token yet"
         if (!canShow(c)) return "On — but nothing may draw over other apps yet (see below)"
+        lastProblem?.let { return "On — last banner failed: $it" }
         val kinds = listOf("call" to "calls", "sms" to "SMS", "chat" to "chat", "voicemail" to "voicemail")
             .filter { BasePrefs.pbxShows(c, it.first) }.joinToString(", ") { it.second }
-        return "On · ${if (kinds.isBlank()) "nothing chosen" else kinds} · every ${BasePrefs.pbxPollSeconds(c)}s"
+        val loop = if (running) "asking every ${BasePrefs.pbxPollSeconds(c)}s" else "not asking yet — reopen the home screen"
+        return "On · ${if (kinds.isBlank()) "nothing chosen" else kinds} · $loop"
     }
 
     /** Asks the PBX once and says what happened, for the Test button. */
