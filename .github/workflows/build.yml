@@ -87,11 +87,13 @@ jobs:
           mv /tmp/kotlin/kotlinc "$HOME/kotlinc"
 
       - name: Build APK
-        env:
-          SDK: ${{ env.ANDROID_HOME }}
-          BT: ${{ env.ANDROID_HOME }}/build-tools/34.0.0
-          KOTLINC: ${{ env.HOME }}/kotlinc
         run: |
+          # These paths are exported here rather than in an `env:` block: the
+          # workflow `env` context cannot read runner variables such as
+          # ANDROID_HOME, so an `env:` entry would expand to an empty string.
+          export SDK="$ANDROID_HOME"
+          export BT="$ANDROID_HOME/build-tools/34.0.0"
+          export KOTLINC="$HOME/kotlinc"
           chmod +x karas-tv/build.sh
           ./karas-tv/build.sh
 
