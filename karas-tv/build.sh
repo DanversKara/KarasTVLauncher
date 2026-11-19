@@ -12,7 +12,16 @@ cd "$(dirname "$0")"
 
 SDK="${SDK:-${ANDROID_HOME:-$HOME/Android/Sdk}}"
 BT="${BT:-$(ls -d "$SDK"/build-tools/* 2>/dev/null | sort -V | tail -1)}"
-PLATFORM="${PLATFORM:-$SDK/platforms/android-34/android.jar}"
+# android-34 is what the app targets, but any newer platform compiles it too.
+# Falling back to the newest one installed means a machine with only android-35
+# or 36 builds instead of failing on a path that happens not to exist.
+if [ -z "$PLATFORM" ]; then
+  if [ -f "$SDK/platforms/android-34/android.jar" ]; then
+    PLATFORM="$SDK/platforms/android-34/android.jar"
+  else
+    PLATFORM="$(ls -d "$SDK"/platforms/android-*/android.jar 2>/dev/null | sort -V | tail -1)"
+  fi
+fi
 AAPT2="${AAPT2:-$BT/aapt2}"
 D8="${D8:-$BT/d8}"
 ZIPALIGN="${ZIPALIGN:-$BT/zipalign}"
@@ -22,6 +31,19 @@ KEYSTORE="${KEYSTORE:-$HOME/.android/debug.keystore}"
 PKG=com.moomoo.tvlauncherbase
 VCODE=30
 VNAME=2.9.11
+
+# Say which piece is missing. Without this the build dies later on an opaque
+# "No such file or directory" from aapt2 or kotlinc.
+missing=""
+[ -f "$PLATFORM" ] || missing="$missing\n  android.jar      (install an SDK platform, e.g. sdkmanager 'platforms;android-34'; SDK=$SDK)"
+[ -x "$AAPT2" ]    || missing="$missing\n  aapt2            (install build-tools, e.g. sdkmanager 'build-tools;34.0.0')"
+[ -x "$D8" ]       || missing="$missing\n  d8               (same build-tools package)"
+[ -f "$KOTLINC/lib/kotlin-compiler.jar" ] || missing="$missing\n  kotlin compiler  (unzip kotlin-compiler-2.x.zip; KOTLINC=$KOTLINC)"
+if [ -n "$missing" ]; then
+  # shellcheck disable=SC2059
+  printf "build.sh cannot find:$missing\n\nSet SDK, BT or KOTLINC to point at them, e.g.\n  SDK=~/Android/Sdk KOTLINC=~/kotlinc ./build.sh\n" >&2
+  exit 1
+fi
 
 if [ ! -f "$KEYSTORE" ]; then
   mkdir -p "$(dirname "$KEYSTORE")"

@@ -1,0 +1,127 @@
+# Build Kara's TV Launcher on GitHub, so a broken build is caught here and not
+# on the TV.
+#
+# The project has no Gradle wrapper on purpose: karas-tv/build.sh drives aapt2,
+# kotlinc, d8 and apksigner by hand. This workflow installs exactly those four
+# things and runs that same script, so CI and a local build stay identical --
+# there is no second build definition to drift.
+#
+# Every push and pull request builds the APK and uploads it as a workflow
+# artifact. A push to main also creates tag v<version> and a GitHub release with
+# the APK attached, but only when that tag does not exist yet, so pushing more
+# commits without bumping the version never makes a duplicate release.
+name: Build TV Launcher
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: tv-launcher-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  KOTLIN_VERSION: 2.0.21
+
+jobs:
+  build:
+    name: Build APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read version from build.sh
+        id: version
+        run: |
+          # build.sh is the single source of truth for the version the APK
+          # carries, so the tag is read from it rather than kept in a second
+          # place that can disagree with it.
+          VNAME=$(sed -n 's/^VNAME=//p' karas-tv/build.sh | head -1)
+          VCODE=$(sed -n 's/^VCODE=//p' karas-tv/build.sh | head -1)
+          if [ -z "$VNAME" ]; then
+            echo "::error::Could not read VNAME from karas-tv/build.sh"
+            exit 1
+          fi
+          echo "name=$VNAME" >> "$GITHUB_OUTPUT"
+          echo "code=$VCODE" >> "$GITHUB_OUTPUT"
+          echo "Building Kara's TV $VNAME (versionCode $VCODE)"
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Install Android SDK packages
+        run: |
+          # The runner image ships an SDK, but which platform and build-tools
+          # versions it has changes between image releases. Asking for the exact
+          # ones build.sh wants keeps the build reproducible as the image moves.
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            "platforms;android-34" "build-tools;34.0.0" > /dev/null
+
+      - name: Cache Kotlin compiler
+        id: kotlin-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/kotlinc
+          key: kotlinc-${{ env.KOTLIN_VERSION }}
+
+      - name: Install Kotlin compiler
+        if: steps.kotlin-cache.outputs.cache-hit != 'true'
+        run: |
+          curl -sSL -o /tmp/kotlin.zip \
+            "https://github.com/JetBrains/kotlin/releases/download/v${KOTLIN_VERSION}/kotlin-compiler-${KOTLIN_VERSION}.zip"
+          unzip -q /tmp/kotlin.zip -d /tmp/kotlin
+          mv /tmp/kotlin/kotlinc "$HOME/kotlinc"
+
+      - name: Build APK
+        env:
+          SDK: ${{ env.ANDROID_HOME }}
+          BT: ${{ env.ANDROID_HOME }}/build-tools/34.0.0
+          KOTLINC: ${{ env.HOME }}/kotlinc
+        run: |
+          chmod +x karas-tv/build.sh
+          ./karas-tv/build.sh
+
+      - name: Name the APK after its version
+        id: apk
+        run: |
+          NAME="karas-tv-${{ steps.version.outputs.name }}.apk"
+          mv karas-tv/karas-tv-debug.apk "karas-tv/$NAME"
+          echo "path=karas-tv/$NAME" >> "$GITHUB_OUTPUT"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          ls -la "karas-tv/$NAME"
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.apk.outputs.name }}
+          path: ${{ steps.apk.outputs.path }}
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Create tag and release if missing
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="v${{ steps.version.outputs.name }}"
+          if git ls-remote --tags origin "refs/tags/${TAG}" | grep -q .; then
+            echo "Tag ${TAG} already exists, nothing to release."
+            exit 0
+          fi
+          gh release create "$TAG" "${{ steps.apk.outputs.path }}" \
+            --title "Kara's TV ${{ steps.version.outputs.name }}" \
+            --generate-notes
